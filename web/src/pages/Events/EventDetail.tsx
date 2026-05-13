@@ -1,11 +1,20 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, Button, Tag, Spin, List, message, InputNumber, Space, Empty } from 'antd'
-import { CalendarOutlined, EnvironmentOutlined, ArrowLeftOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { Card, Button, Tag, Spin, List, message, InputNumber, Space, Empty, Divider, Typography } from 'antd'
+import { CalendarOutlined, EnvironmentOutlined, ArrowLeftOutlined, ClockCircleOutlined, ShoppingOutlined } from '@ant-design/icons'
 import { getEvent, getEventStock, Event, TicketType, Show } from '../../api/events'
 import { getEventShows } from '../../api/shows'
 import { purchaseTicket } from '../../api/tickets'
+import { joinQueue, leaveQueue } from '../../api/queue'
+import { getActiveListings, MarketplaceListing } from '../../api/marketplace'
 import { getEventGradient } from '../../theme/gradients'
+import QueueWaiting from '../../components/QueueWaiting'
+import WaitlistButton from '../../components/WaitlistButton'
+import PromoCodeInput from '../../components/PromoCodeInput'
+import ShareButton from '../../components/ShareButton'
+import Countdown from '../../components/Countdown'
+
+const { Text } = Typography
 
 const statusMap: Record<string, { color: string; text: string }> = {
   draft: { color: 'default', text: '草稿' },
@@ -24,6 +33,17 @@ export default function EventDetail() {
   const [realTimeStock, setRealTimeStock] = useState<Record<string, number>>({})
   const [shows, setShows] = useState<Show[]>([])
   const [selectedShow, setSelectedShow] = useState<number | null>(null)
+
+  // 排队状态
+  const [queueState, setQueueState] = useState<'none' | 'queuing' | 'ready' | 'error'>('none')
+  const [pendingPurchase, setPendingPurchase] = useState<{ ticketType: TicketType; quantity: number } | null>(null)
+
+  // 促销码状态
+  const [promoDiscount, setPromoDiscount] = useState<number | null>(null)
+  const [promoCode, setPromoCode] = useState<string | null>(null)
+
+  // 二手票状态
+  const [marketplaceListings, setMarketplaceListings] = useState<MarketplaceListing[]>([])
 
   const fetchEvent = useCallback(() => {
     if (!id) return
@@ -47,17 +67,30 @@ export default function EventDetail() {
       .catch(() => {})
   }, [id])
 
+  const fetchMarketplace = useCallback(() => {
+    if (!id) return
+    getActiveListings(1, 5)
+      .then((res) => {
+        const eventListings = (res.data.data || []).filter(
+          (l: MarketplaceListing) => l.event_id === Number(id)
+        )
+        setMarketplaceListings(eventListings)
+      })
+      .catch(() => {})
+  }, [id])
+
   useEffect(() => {
     fetchEvent()
     fetchStock()
     fetchShows()
+    fetchMarketplace()
 
     const interval = setInterval(() => {
       fetchStock()
       fetchShows()
     }, 5000)
     return () => clearInterval(interval)
-  }, [fetchEvent, fetchStock, fetchShows])
+  }, [fetchEvent, fetchStock, fetchShows, fetchMarketplace])
 
   useEffect(() => {
     if (shows.length > 0 && selectedShow === null) {
@@ -66,15 +99,14 @@ export default function EventDetail() {
     }
   }, [shows, selectedShow])
 
-  const handlePurchase = async (ticketType: TicketType) => {
-    const qty = quantities[ticketType.id] || 1
+  const executePurchase = async (ticketType: TicketType, quantity: number) => {
     setPurchasing(ticketType.id)
     try {
       await purchaseTicket({
         event_id: Number(id),
         show_id: selectedShow || undefined,
         ticket_type_id: ticketType.id,
-        quantity: qty,
+        quantity,
       })
       message.success('排队中，请稍候...')
       setTimeout(() => navigate('/tickets'), 2000)
@@ -85,7 +117,45 @@ export default function EventDetail() {
     }
   }
 
+  const handlePurchase = async (ticketType: TicketType) => {
+    const qty = quantities[ticketType.id] || 1
+
+    // 先加入排队
+    setPendingPurchase({ ticketType, quantity: qty })
+    setQueueState('queuing')
+    try {
+      await joinQueue(Number(id))
+    } catch {
+      // 排队失败直接购票
+      setQueueState('none')
+      setPendingPurchase(null)
+      executePurchase(ticketType, qty)
+    }
+  }
+
+  const handleQueueReady = () => {
+    setQueueState('ready')
+    if (pendingPurchase) {
+      executePurchase(pendingPurchase.ticketType, pendingPurchase.quantity)
+      setQueueState('none')
+      setPendingPurchase(null)
+    }
+  }
+
+  const handleQueueLeave = () => {
+    leaveQueue(Number(id)).catch(() => {})
+    setQueueState('none')
+    setPendingPurchase(null)
+  }
+
+  const handlePromoApply = (discount: number, _finalAmount: number, code: string) => {
+    setPromoDiscount(discount)
+    setPromoCode(code)
+  }
+
   const getStock = (ticketTypeId: number) => realTimeStock[String(ticketTypeId)] ?? 0
+  const totalStock = event?.ticket_types?.reduce((sum, tt) => sum + (getStock(tt.id) || 0), 0) ?? 0
+  const isSoldOut = totalStock === 0 && event?.status === 'on_sale'
 
   const activeShows = shows.filter((s) => s.status === 'on_sale')
   const hasShows = shows.length > 0
@@ -120,15 +190,35 @@ export default function EventDetail() {
                 <span><EnvironmentOutlined style={{ marginRight: 6 }} />{event.location}</span>
               </div>
             </div>
-            <Tag color={statusMap[event.status]?.color} style={{ fontSize: 14, padding: '4px 14px', borderRadius: 8 }}>
-              {statusMap[event.status]?.text}
-            </Tag>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Tag color={statusMap[event.status]?.color} style={{ fontSize: 14, padding: '4px 14px', borderRadius: 8 }}>
+                {statusMap[event.status]?.text}
+              </Tag>
+              <ShareButton eventId={event.id} eventTitle={event.title} eventDescription={event.description} />
+            </div>
           </div>
           {event.description && (
             <p style={{ margin: '12px 0 0', opacity: 0.8, fontSize: 14 }}>{event.description}</p>
           )}
         </div>
       </div>
+
+      {/* 开售倒计时 */}
+      {event.status === 'draft' && new Date(event.start_time) > new Date() && (
+        <Card style={{ borderRadius: 16, marginBottom: 16, textAlign: 'center' }}>
+          <Text type="secondary" style={{ fontSize: 14 }}>距开售还有</Text>
+          <div style={{ marginTop: 8 }}>
+            <Countdown targetDate={event.start_time} size="large" format="DD天 HH:mm:ss" onFinish={fetchEvent} />
+          </div>
+        </Card>
+      )}
+
+      {/* 排队等待 */}
+      {queueState === 'queuing' && (
+        <div style={{ marginBottom: 16 }}>
+          <QueueWaiting eventId={Number(id)} onReady={handleQueueReady} onLeave={handleQueueLeave} />
+        </div>
+      )}
 
       {/* Show Selection */}
       {hasShows && (
@@ -181,7 +271,7 @@ export default function EventDetail() {
               <List.Item
                 style={{ padding: '16px 0' }}
                 actions={
-                  event.status === 'on_sale' && stock > 0
+                  event.status === 'on_sale' && stock > 0 && queueState !== 'queuing'
                     ? [
                         <Space key="buy">
                           <InputNumber
@@ -235,7 +325,79 @@ export default function EventDetail() {
             )
           }}
         />
+
+        {/* 促销码 */}
+        {event.status === 'on_sale' && !isSoldOut && (
+          <>
+            <Divider style={{ margin: '16px 0' }} />
+            <div style={{ maxWidth: 400 }}>
+              <Text type="secondary" style={{ fontSize: 13, marginBottom: 8, display: 'block' }}>优惠码</Text>
+              <PromoCodeInput amount={0} onApply={handlePromoApply} />
+              {promoDiscount && promoDiscount > 0 && (
+                <Text type="success" style={{ marginTop: 8, display: 'block' }}>
+                  已优惠 ¥{promoDiscount.toFixed(2)}（码：{promoCode}）
+                </Text>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* 售罄 + 等候名单 */}
+        {isSoldOut && (
+          <>
+            <Divider style={{ margin: '16px 0' }} />
+            <div style={{ textAlign: 'center', padding: '16px 0' }}>
+              <Text type="secondary" style={{ fontSize: 14, display: 'block', marginBottom: 12 }}>
+                所有票种已售罄
+              </Text>
+              <WaitlistButton
+                eventId={Number(id)}
+                isSoldOut={isSoldOut}
+              />
+            </div>
+          </>
+        )}
       </Card>
+
+      {/* 该活动的二手票 */}
+      {marketplaceListings.length > 0 && (
+        <Card
+          title={<><ShoppingOutlined /> 该活动二手票</>}
+          style={{ borderRadius: 16, marginTop: 16 }}
+        >
+          <List
+            dataSource={marketplaceListings}
+            renderItem={(listing) => (
+              <List.Item
+                actions={[
+                  <Button
+                    type="primary"
+                    size="small"
+                    key="buy"
+                    onClick={() => navigate('/marketplace')}
+                  >
+                    查看详情
+                  </Button>,
+                ]}
+              >
+                <List.Item.Meta
+                  title={
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span>{listing.ticket_name}</span>
+                      <span style={{ color: 'var(--color-gold)', fontWeight: 600 }}>¥{listing.price}</span>
+                    </div>
+                  }
+                  description={
+                    <span style={{ fontSize: 12 }}>
+                      卖家：{listing.seller_name} | {new Date(listing.created_at).toLocaleString('zh-CN')}
+                    </span>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        </Card>
+      )}
     </div>
   )
 }

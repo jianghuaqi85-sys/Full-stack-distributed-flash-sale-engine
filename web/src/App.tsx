@@ -10,10 +10,14 @@ import Profile from './pages/Profile'
 import Events from './pages/Events'
 import EventDetail from './pages/Events/EventDetail'
 import Marketplace from './pages/Events/Marketplace'
+import MarketplaceDetail from './pages/Events/MarketplaceDetail'
 import Tickets from './pages/Tickets'
+import TicketDetail from './pages/Tickets/TicketDetail'
 import TransferRecords from './pages/Tickets/TransferRecords'
 import AdminEvents from './pages/Admin/Events'
 import AdminDashboard from './pages/Admin/Dashboard'
+import AdminTransfers from './pages/Admin/Transfers'
+import AdminPromoCodes from './pages/Admin/PromoCodes'
 import AppLayout from './components/AppLayout'
 import ProtectedRoute from './components/ProtectedRoute'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -51,11 +55,15 @@ export default function App() {
                 <Route path="/events" element={<RouteErrorBoundary><Events /></RouteErrorBoundary>} />
                 <Route path="/events/:id" element={<RouteErrorBoundary><EventDetail /></RouteErrorBoundary>} />
                 <Route path="/marketplace" element={<RouteErrorBoundary><Marketplace /></RouteErrorBoundary>} />
+                <Route path="/marketplace/:id" element={<RouteErrorBoundary><MarketplaceDetail /></RouteErrorBoundary>} />
                 <Route path="/tickets" element={<RouteErrorBoundary><Tickets /></RouteErrorBoundary>} />
+                <Route path="/tickets/:id" element={<RouteErrorBoundary><TicketDetail /></RouteErrorBoundary>} />
                 <Route path="/transfer-records" element={<RouteErrorBoundary><TransferRecords /></RouteErrorBoundary>} />
                 <Route path="/profile" element={<RouteErrorBoundary><Profile /></RouteErrorBoundary>} />
                 <Route path="/admin/dashboard" element={<RouteErrorBoundary><AdminRoute><AdminDashboard /></AdminRoute></RouteErrorBoundary>} />
                 <Route path="/admin/events" element={<RouteErrorBoundary><AdminRoute><AdminEvents /></AdminRoute></RouteErrorBoundary>} />
+                <Route path="/admin/transfers" element={<RouteErrorBoundary><AdminRoute><AdminTransfers /></AdminRoute></RouteErrorBoundary>} />
+                <Route path="/admin/promo" element={<RouteErrorBoundary><AdminRoute><AdminPromoCodes /></AdminRoute></RouteErrorBoundary>} />
               </Route>
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />

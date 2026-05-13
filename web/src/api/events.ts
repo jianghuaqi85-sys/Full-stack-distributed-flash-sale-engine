@@ -75,6 +75,10 @@ export function unpublishEvent(id: number) {
   return request.post(`/admin/events/${id}/unpublish`)
 }
 
+export function endEvent(id: number) {
+  return request.post(`/admin/events/${id}/end`)
+}
+
 export function createTicketType(eventId: number, data: {
   name: string
   price: number

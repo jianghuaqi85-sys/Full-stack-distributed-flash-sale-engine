@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Card, Table, Tag, Button, Space, Modal, message, Empty, Select, QRCode } from 'antd'
 import { useNavigate } from 'react-router-dom'
-import { Ticket, getMyTickets, payTicket, cancelTicket } from '../../api/tickets'
+import { Ticket, getMyTickets, payTicket, cancelTicket, useTicket } from '../../api/tickets'
+import TransferButton from '../../components/TransferButton'
 
 const statusMap: Record<string, { color: string; text: string }> = {
   reserved: { color: 'processing', text: '待支付' },
@@ -53,6 +54,22 @@ export default function Tickets() {
         try {
           await cancelTicket(id)
           message.success('取消成功')
+          fetchTickets()
+        } catch {
+          // handled by interceptor
+        }
+      },
+    })
+  }
+
+  const handleUse = (id: number) => {
+    Modal.confirm({
+      title: '确认使用',
+      content: '使用后此票将标记为已使用，确定吗？',
+      onOk: async () => {
+        try {
+          await useTicket(id)
+          message.success('核销成功')
           fetchTickets()
         } catch {
           // handled by interceptor
@@ -128,7 +145,11 @@ export default function Tickets() {
               <Button size="small" onClick={() => record.qr_code && showQRCode(record.qr_code)}>
                 二维码
               </Button>
-              <Button size="small" onClick={() => handleCancel(record.id)}>
+              <Button size="small" onClick={() => handleUse(record.id)}>
+                使用
+              </Button>
+              <TransferButton ticketId={record.id} onSuccess={fetchTickets} />
+              <Button danger size="small" onClick={() => handleCancel(record.id)}>
                 退票
               </Button>
             </>
@@ -171,6 +192,10 @@ export default function Tickets() {
             dataSource={filteredTickets}
             rowKey="id"
             loading={loading}
+            onRow={(record) => ({
+              style: { cursor: 'pointer' },
+              onClick: () => navigate(`/tickets/${record.id}`),
+            })}
             pagination={{
               current: page,
               total,

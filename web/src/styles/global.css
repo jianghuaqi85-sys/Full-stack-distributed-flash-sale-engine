@@ -203,3 +203,16 @@
 .status-dot.active { background: var(--color-success); }
 .status-dot.pending { background: var(--color-warning); }
 .status-dot.error { background: var(--color-error); }
+
+/* Login page input text color */
+.login-bg input,
+.login-bg .ant-input,
+.login-bg .ant-input-password {
+  color: #1f1f1f !important;
+}
+.login-bg input::placeholder {
+  color: rgba(0, 0, 0, 0.45) !important;
+}
+.login-bg .ant-input-prefix {
+  color: rgba(0, 0, 0, 0.45) !important;
+}

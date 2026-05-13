@@ -3,6 +3,7 @@ import { Card, Descriptions, Button, Form, Input, Tag, Avatar, message, Tabs } f
 import { UserOutlined, LockOutlined, CalendarOutlined, TagOutlined, ShopOutlined, SwapOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
+import { changePassword } from '../../api/profile'
 
 export default function Profile() {
   const navigate = useNavigate()
@@ -12,13 +13,16 @@ export default function Profile() {
 
   const handleChangePassword = async () => {
     try {
-      await form.validateFields()
-      // TODO: 调用后端修改密码 API
-      message.warning('修改密码功能暂未接入后端')
+      const values = await form.validateFields()
+      await changePassword({
+        old_password: values.oldPassword,
+        new_password: values.newPassword,
+      })
+      message.success('密码修改成功')
       setPasswordModalOpen(false)
       form.resetFields()
     } catch {
-      // validation failed
+      // validation failed or API error handled by interceptor
     }
   }
 

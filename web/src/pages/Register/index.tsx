@@ -38,36 +38,33 @@ export default function Register() {
         <Form onFinish={onFinish} autoComplete="off" size="large">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input
-              prefix={<UserOutlined style={{ color: 'rgba(255,255,255,0.4)' }} />}
+              prefix={<UserOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
               placeholder="用户名"
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
                 borderRadius: 12,
               }}
             />
           </Form.Item>
           <Form.Item name="email" rules={[{ required: true, type: 'email', message: '请输入有效邮箱' }]}>
             <Input
-              prefix={<MailOutlined style={{ color: 'rgba(255,255,255,0.4)' }} />}
+              prefix={<MailOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
               placeholder="邮箱"
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
                 borderRadius: 12,
               }}
             />
           </Form.Item>
           <Form.Item name="password" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
             <Input.Password
-              prefix={<LockOutlined style={{ color: 'rgba(255,255,255,0.4)' }} />}
+              prefix={<LockOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
               placeholder="密码"
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
                 borderRadius: 12,
               }}
             />
@@ -88,12 +85,11 @@ export default function Register() {
             ]}
           >
             <Input.Password
-              prefix={<LockOutlined style={{ color: 'rgba(255,255,255,0.4)' }} />}
+              prefix={<LockOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
               placeholder="确认密码"
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
                 borderRadius: 12,
               }}
             />

@@ -109,6 +109,13 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 		public.POST("/login", authHandler.Login)
 	}
 
+	// API 认证路由（前端通过 /api 前缀访问）
+	apiAuth := r.Group("/api")
+	{
+		apiAuth.POST("/auth/register", authHandler.Register)
+		apiAuth.POST("/auth/login", authHandler.Login)
+	}
+
 	api := r.Group("/api")
 	api.Use(middleware.JWTAuthWithBlacklist(db, jwtSecret, redisClient))
 	{

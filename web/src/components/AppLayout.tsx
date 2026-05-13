@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Layout, Menu, Button, theme, Space, Tag, Avatar } from 'antd'
-import { DashboardOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, CalendarOutlined, TagOutlined, UserOutlined, SettingOutlined, BarChartOutlined, ShopOutlined, SwapOutlined } from '@ant-design/icons'
+import { DashboardOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, CalendarOutlined, TagOutlined, UserOutlined, SettingOutlined, BarChartOutlined, ShopOutlined, SwapOutlined, AuditOutlined, PercentageOutlined } from '@ant-design/icons'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import NotificationBell from './NotificationBell'
@@ -34,6 +34,8 @@ export default function AppLayout({ isDark, onThemeToggle }: Props) {
     ...(isAdmin ? [
       { key: '/admin/dashboard', icon: <BarChartOutlined />, label: '数据仪表盘' },
       { key: '/admin/events', icon: <SettingOutlined />, label: '活动管理' },
+      { key: '/admin/transfers', icon: <AuditOutlined />, label: '转让审核' },
+      { key: '/admin/promo', icon: <PercentageOutlined />, label: '促销码管理' },
     ] : []),
   ]
 

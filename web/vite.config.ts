@@ -10,21 +10,19 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      // 管理员 API 路由 - 仅代理非 GET 请求（API 调用），GET 请求走 SPA
       '/admin': {
         target: 'http://localhost:8080',
         changeOrigin: true,
+        bypass: (req) => {
+          if (req.method === 'GET' && !req.headers.accept?.includes('application/json')) {
+            return req.url
+          }
+        },
       },
       '/ws': {
         target: 'ws://localhost:8080',
         ws: true,
-        changeOrigin: true,
-      },
-      '/register': {
-        target: 'http://localhost:8080',
-        changeOrigin: true,
-      },
-      '/login': {
-        target: 'http://localhost:8080',
         changeOrigin: true,
       },
       '/health': {

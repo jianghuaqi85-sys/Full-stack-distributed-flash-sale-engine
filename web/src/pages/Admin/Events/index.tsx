@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Card, Table, Button, Tag, Space, Modal, Form, Input, DatePicker, message, Drawer, List, Empty, Popconfirm } from 'antd'
-import { PlusOutlined, EditOutlined, CalendarOutlined, DeleteOutlined } from '@ant-design/icons'
-import { getEvents, createEvent, updateEvent, publishEvent, unpublishEvent, Event } from '../../../api/events'
+import { Card, Table, Button, Tag, Space, Modal, Form, Input, InputNumber, DatePicker, message, Drawer, List, Empty, Popconfirm } from 'antd'
+import { PlusOutlined, EditOutlined, CalendarOutlined, DeleteOutlined, StopOutlined } from '@ant-design/icons'
+import { getEvents, createEvent, updateEvent, publishEvent, unpublishEvent, endEvent, createTicketType, updateTicketType, deleteTicketType, Event } from '../../../api/events'
 import { getEventShows, createShow, updateShow, deleteShow, publishShow, unpublishShow, Show } from '../../../api/shows'
 import dayjs from 'dayjs'
 
@@ -29,6 +29,13 @@ export default function AdminEvents() {
   const [showModalVisible, setShowModalVisible] = useState(false)
   const [editingShow, setEditingShow] = useState<Show | null>(null)
   const [showForm] = Form.useForm()
+
+  // 票种管理
+  const [ticketTypeDrawerVisible, setTicketTypeDrawerVisible] = useState(false)
+  const [ticketTypes, setTicketTypes] = useState<Event['ticket_types']>([])
+  const [ticketTypeModalVisible, setTicketTypeModalVisible] = useState(false)
+  const [editingTicketType, setEditingTicketType] = useState<{ id: number; name: string; price: number; stock: number; max_per_user: number; sort_order: number } | null>(null)
+  const [ticketTypeForm] = Form.useForm()
 
   const fetchEvents = useCallback(() => {
     setLoading(true)
@@ -97,6 +104,16 @@ export default function AdminEvents() {
     try {
       await unpublishEvent(id)
       message.success('下架成功')
+      fetchEvents()
+    } catch {
+      // handled by interceptor
+    }
+  }
+
+  const handleEndEvent = async (id: number) => {
+    try {
+      await endEvent(id)
+      message.success('已结束')
       fetchEvents()
     } catch {
       // handled by interceptor
@@ -187,6 +204,72 @@ export default function AdminEvents() {
     }
   }
 
+  // 票种管理
+  const handleManageTicketTypes = (event: Event) => {
+    setCurrentEvent(event)
+    setTicketTypeDrawerVisible(true)
+    setTicketTypes(event.ticket_types || [])
+  }
+
+  const handleCreateTicketType = () => {
+    setEditingTicketType(null)
+    ticketTypeForm.resetFields()
+    ticketTypeForm.setFieldsValue({ max_per_user: 4, sort_order: 0 })
+    setTicketTypeModalVisible(true)
+  }
+
+  const handleEditTicketType = (tt: { id: number; name: string; price: number; stock: number; max_per_user: number; sort_order: number }) => {
+    setEditingTicketType(tt)
+    ticketTypeForm.setFieldsValue(tt)
+    setTicketTypeModalVisible(true)
+  }
+
+  const handleTicketTypeSubmit = async () => {
+    if (!currentEvent) return
+    try {
+      const values = await ticketTypeForm.validateFields()
+
+      if (editingTicketType) {
+        await updateTicketType(editingTicketType.id, values)
+        message.success('更新票种成功')
+      } else {
+        await createTicketType(currentEvent.id, values)
+        message.success('创建票种成功')
+      }
+      setTicketTypeModalVisible(false)
+      // 刷新活动列表以获取最新票种
+      fetchEvents()
+      // 更新当前活动的票种
+      if (editingTicketType) {
+        setTicketTypes((prev) =>
+          prev?.map((tt) => (tt?.id === editingTicketType.id ? { ...tt, ...values } : tt)) || []
+        )
+      } else {
+        // 简单刷新：重新获取活动详情
+        getEvents(page, 10).then((res) => {
+          const updated = res.data.data.find((e) => e.id === currentEvent.id)
+          if (updated) {
+            setTicketTypes(updated.ticket_types || [])
+            setCurrentEvent(updated)
+          }
+        })
+      }
+    } catch {
+      // validation error
+    }
+  }
+
+  const handleDeleteTicketType = async (ttId: number) => {
+    try {
+      await deleteTicketType(ttId)
+      message.success('删除票种成功')
+      setTicketTypes((prev) => prev?.filter((tt) => tt?.id !== ttId) || [])
+      fetchEvents()
+    } catch {
+      // handled
+    }
+  }
+
   const columns = [
     {
       title: 'ID',
@@ -237,6 +320,9 @@ export default function AdminEvents() {
           <Button size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)}>
             编辑
           </Button>
+          <Button size="small" onClick={() => handleManageTicketTypes(record)}>
+            票种
+          </Button>
           <Button size="small" icon={<CalendarOutlined />} onClick={() => handleManageShows(record)}>
             场次
           </Button>
@@ -246,9 +332,16 @@ export default function AdminEvents() {
             </Button>
           )}
           {record.status === 'on_sale' && (
-            <Button size="small" danger onClick={() => handleUnpublish(record.id)}>
-              下架
-            </Button>
+            <>
+              <Button size="small" danger onClick={() => handleUnpublish(record.id)}>
+                下架
+              </Button>
+              <Popconfirm title="确定结束此活动？结束后不可恢复。" onConfirm={() => handleEndEvent(record.id)}>
+                <Button size="small" danger icon={<StopOutlined />}>
+                  结束
+                </Button>
+              </Popconfirm>
+            </>
           )}
         </Space>
       ),
@@ -280,6 +373,7 @@ export default function AdminEvents() {
         />
       </Card>
 
+      {/* 活动编辑弹窗 */}
       <Modal
         title={editingEvent ? '编辑活动' : '创建活动'}
         open={modalVisible}
@@ -309,6 +403,7 @@ export default function AdminEvents() {
         </Form>
       </Modal>
 
+      {/* 场次管理抽屉 */}
       <Drawer
         title={currentEvent ? `${currentEvent.title} - 场次管理` : '场次管理'}
         open={showDrawerVisible}
@@ -361,6 +456,7 @@ export default function AdminEvents() {
         />
       </Drawer>
 
+      {/* 场次编辑弹窗 */}
       <Modal
         title={editingShow ? '编辑场次' : '添加场次'}
         open={showModalVisible}
@@ -379,10 +475,79 @@ export default function AdminEvents() {
             <DatePicker showTime style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item name="stock" label="库存" rules={[{ required: true, message: '请输入库存' }]}>
-            <Input type="number" min={0} placeholder="请输入库存数量" />
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="请输入库存数量" />
           </Form.Item>
           <Form.Item name="sort_order" label="排序">
-            <Input type="number" placeholder="数字越小越靠前" />
+            <InputNumber placeholder="数字越小越靠前" style={{ width: '100%' }} />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* 票种管理抽屉 */}
+      <Drawer
+        title={currentEvent ? `${currentEvent.title} - 票种管理` : '票种管理'}
+        open={ticketTypeDrawerVisible}
+        onClose={() => setTicketTypeDrawerVisible(false)}
+        width={600}
+        extra={
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreateTicketType}>
+            添加票种
+          </Button>
+        }
+      >
+        <List
+          dataSource={ticketTypes || []}
+          locale={{ emptyText: <Empty description="暂无票种" /> }}
+          renderItem={(tt) => tt && (
+            <List.Item
+              actions={[
+                <Button size="small" icon={<EditOutlined />} onClick={() => handleEditTicketType(tt)}>编辑</Button>,
+                <Popconfirm title="确定删除此票种？" onConfirm={() => handleDeleteTicketType(tt.id)}>
+                  <Button size="small" danger icon={<DeleteOutlined />}>删除</Button>
+                </Popconfirm>,
+              ]}
+            >
+              <List.Item.Meta
+                title={
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <span style={{ fontWeight: 600 }}>{tt.name}</span>
+                    <span style={{ color: 'var(--color-gold)', fontWeight: 600 }}>¥{tt.price}</span>
+                  </div>
+                }
+                description={
+                  <div>
+                    <div>库存: {tt.stock} 张 | 每人限购: {tt.max_per_user} 张 | 排序: {tt.sort_order}</div>
+                  </div>
+                }
+              />
+            </List.Item>
+          )}
+        />
+      </Drawer>
+
+      {/* 票种编辑弹窗 */}
+      <Modal
+        title={editingTicketType ? '编辑票种' : '添加票种'}
+        open={ticketTypeModalVisible}
+        onOk={handleTicketTypeSubmit}
+        onCancel={() => setTicketTypeModalVisible(false)}
+        width={500}
+      >
+        <Form form={ticketTypeForm} layout="vertical">
+          <Form.Item name="name" label="票种名称" rules={[{ required: true, message: '请输入票种名称' }]}>
+            <Input placeholder="如：VIP票、普通票" />
+          </Form.Item>
+          <Form.Item name="price" label="价格" rules={[{ required: true, message: '请输入价格' }]}>
+            <InputNumber min={0} step={0.01} prefix="¥" style={{ width: '100%' }} placeholder="请输入价格" />
+          </Form.Item>
+          <Form.Item name="stock" label="库存" rules={[{ required: true, message: '请输入库存' }]}>
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="请输入库存数量" />
+          </Form.Item>
+          <Form.Item name="max_per_user" label="每人限购">
+            <InputNumber min={1} max={100} style={{ width: '100%' }} placeholder="默认4张" />
+          </Form.Item>
+          <Form.Item name="sort_order" label="排序">
+            <InputNumber placeholder="数字越小越靠前" style={{ width: '100%' }} />
           </Form.Item>
         </Form>
       </Modal>

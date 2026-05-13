@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Card, Table, Button, Tag, Space, Modal, Form, InputNumber, Input, Select, message, Tabs, Empty } from 'antd'
-import { ShoppingOutlined, PlusOutlined } from '@ant-design/icons'
+import { ShoppingOutlined, PlusOutlined, EyeOutlined } from '@ant-design/icons'
+import { useNavigate } from 'react-router-dom'
 import { getActiveListings, getMyListings, getMyPurchases, createListing, buyListing, cancelListing, MarketplaceListing } from '../../api/marketplace'
 import { getMyTickets } from '../../api/tickets'
 import { useAuthStore } from '../../stores/authStore'
@@ -14,6 +15,7 @@ interface MyTicket {
 
 export default function Marketplace() {
   const { user } = useAuthStore()
+  const navigate = useNavigate()
   const [listings, setListings] = useState<MarketplaceListing[]>([])
   const [myListings, setMyListings] = useState<MarketplaceListing[]>([])
   const [myPurchases, setMyPurchases] = useState<MarketplaceListing[]>([])
@@ -124,6 +126,9 @@ export default function Marketplace() {
       key: 'action',
       render: (_: unknown, record: MarketplaceListing) => (
         <Space>
+          <Button size="small" icon={<EyeOutlined />} onClick={() => navigate(`/marketplace/${record.id}`)}>
+            详情
+          </Button>
           {record.seller_id !== user?.id && (
             <Button type="primary" size="small" icon={<ShoppingOutlined />} onClick={() => handleBuy(record.id)}>
               购买

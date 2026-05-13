@@ -38,24 +38,22 @@ export default function Login() {
         <Form onFinish={onFinish} autoComplete="off" size="large">
           <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
             <Input
-              prefix={<UserOutlined style={{ color: 'rgba(255,255,255,0.4)' }} />}
+              prefix={<UserOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
               placeholder="用户名"
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
                 borderRadius: 12,
               }}
             />
           </Form.Item>
           <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
             <Input.Password
-              prefix={<LockOutlined style={{ color: 'rgba(255,255,255,0.4)' }} />}
+              prefix={<LockOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
               placeholder="密码"
               style={{
                 background: 'rgba(255,255,255,0.08)',
                 border: '1px solid rgba(255,255,255,0.15)',
-                color: '#fff',
                 borderRadius: 12,
               }}
             />
