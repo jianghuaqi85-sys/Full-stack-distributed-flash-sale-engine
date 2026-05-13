@@ -32,3 +32,6 @@ node_modules/
 # Test coverage
 coverage.out
 coverage.html
+
+# Frontend build
+web/dist/
