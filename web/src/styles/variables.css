@@ -1,0 +1,85 @@
+:root {
+  --color-primary: #5B2FE8;
+  --color-primary-hover: #7B4FF0;
+  --color-primary-active: #4A25C0;
+  --color-primary-bg: #F0EDFC;
+  --color-primary-border: #D4C8FA;
+  --color-primary-shadow: rgba(91, 47, 232, 0.3);
+
+  --color-gold: #D4A843;
+  --color-gold-hover: #E6BC5C;
+  --color-gold-bg: #FDF6E3;
+
+  --color-bg-base: #F5F3FF;
+  --color-bg-container: #FFFFFF;
+  --color-bg-elevated: #FFFFFF;
+  --color-bg-layout: #F0EDFC;
+
+  --color-text-primary: #1A1145;
+  --color-text-secondary: #6B6580;
+  --color-text-tertiary: #9B95A8;
+  --color-text-inverse: #FFFFFF;
+
+  --color-success: #22C55E;
+  --color-success-bg: #F0FDF4;
+  --color-success-border: #BBF7D0;
+  --color-warning: #F59E0B;
+  --color-warning-bg: #FFFBEB;
+  --color-error: #EF4444;
+  --color-info: #6366F1;
+
+  --color-border: #E5E0F0;
+  --color-border-light: #F0EDFC;
+
+  --shadow-sm: 0 1px 3px rgba(91, 47, 232, 0.06);
+  --shadow-md: 0 4px 12px rgba(91, 47, 232, 0.08);
+  --shadow-lg: 0 8px 32px rgba(91, 47, 232, 0.12);
+  --shadow-xl: 0 16px 48px rgba(91, 47, 232, 0.16);
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+}
+
+[data-theme="dark"] {
+  --color-primary: #8B6FFF;
+  --color-primary-hover: #A78BFF;
+  --color-primary-active: #7B5FEE;
+  --color-primary-bg: #1E1640;
+  --color-primary-border: #3D2E7A;
+  --color-primary-shadow: rgba(139, 111, 255, 0.3);
+
+  --color-gold: #E6BC5C;
+  --color-gold-hover: #F0CC75;
+  --color-gold-bg: #2A2210;
+
+  --color-bg-base: #0D0A1A;
+  --color-bg-container: #151025;
+  --color-bg-elevated: #1C1530;
+  --color-bg-layout: #0D0A1A;
+
+  --color-text-primary: #F0EDFC;
+  --color-text-secondary: #A8A0C0;
+  --color-text-tertiary: #6B6580;
+  --color-text-inverse: #1A1145;
+
+  --color-success-bg: #052E16;
+  --color-success-border: #166534;
+  --color-warning-bg: #451A03;
+
+  --color-border: #2A2240;
+  --color-border-light: #1E1640;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+}
