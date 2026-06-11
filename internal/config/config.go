@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -13,11 +14,25 @@ type Config struct {
 	AppEnv        string
 	AppPort       int
 	LogLevel      string
+	AllowOrigins  []string
 	Database      DatabaseConfig
 	Redis         RedisConfig
 	JWT           JWTConfig
 	OpenTelemetry OpenTelemetryConfig
 	Email         EmailConfig
+	Kafka         KafkaConfig
+	WsGateway     WsGatewayConfig
+}
+
+// WsGatewayConfig holds WebSocket Gateway configuration for distributed mode
+type WsGatewayConfig struct {
+	Enabled    bool   // Enable distributed WebSocket mode
+	InstanceID string // Unique instance ID (auto-generated if empty)
+}
+
+type KafkaConfig struct {
+	Brokers []string // Kafka broker 地址列表，如 ["localhost:9092"]
+	Enabled bool    // 是否启用 Kafka（false 时降级为 Redis Stream）
 }
 
 type EmailConfig struct {
@@ -30,22 +45,25 @@ type EmailConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host           string
-	Port           int
-	User           string
-	Password       string
-	Name           string
-	SSLMode        string
-	MaxOpenConns   int
-	MaxIdleConns   int
+	Host            string
+	Port            int
+	User            string
+	Password        string
+	Name            string
+	SSLMode         string
+	MaxOpenConns    int
+	MaxIdleConns    int
 	ConnMaxLifetime int
+	ConnMaxIdleTime int
 }
 
 type RedisConfig struct {
-	Host     string
-	Port     int
-	Password string
-	DB       int
+	Host         string
+	Port         int
+	Password     string
+	DB           int
+	ClusterMode  bool
+	ClusterNodes []string // Redis Cluster 节点列表，如 ["node1:6379", "node2:6379"]
 }
 
 type JWTConfig struct {
@@ -63,8 +81,9 @@ func Load() (*Config, error) {
 	_ = godotenv.Load()
 
 	cfg := &Config{
-		AppEnv:   getEnv("APP_ENV", "production"),
-		LogLevel: getEnv("LOG_LEVEL", "info"),
+		AppEnv:       getEnv("APP_ENV", "production"),
+		LogLevel:     getEnv("LOG_LEVEL", "info"),
+		AllowOrigins: parseOrigins(getEnv("ALLOW_ORIGINS", "http://localhost:3000,http://localhost:5173")),
 		JWT: JWTConfig{
 			Secret: getEnv("JWT_SECRET", "default_secret_key_must_be_overridden_in_production"),
 			Expire: getEnvInt("JWT_EXPIRE", 86400),
@@ -83,14 +102,15 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Database = DatabaseConfig{
-		Host:           getEnv("DB_HOST", "localhost"),
-		User:           getEnv("DB_USER", "postgres"),
-		Password:       getEnv("DB_PASSWORD", ""),
-		Name:           getEnv("DB_NAME", "order_system"),
-		SSLMode:        getEnv("DB_SSLMODE", "require"),
-		MaxOpenConns:   getEnvInt("DB_MAX_OPEN_CONNS", 100),
-		MaxIdleConns:   getEnvInt("DB_MAX_IDLE_CONNS", 20),
+		Host:            getEnv("DB_HOST", "localhost"),
+		User:            getEnv("DB_USER", "postgres"),
+		Password:        getEnv("DB_PASSWORD", ""),
+		Name:            getEnv("DB_NAME", "order_system"),
+		SSLMode:         getEnv("DB_SSLMODE", "require"),
+		MaxOpenConns:    getEnvInt("DB_MAX_OPEN_CONNS", 50),
+		MaxIdleConns:    getEnvInt("DB_MAX_IDLE_CONNS", 25),
 		ConnMaxLifetime: getEnvInt("DB_CONN_MAX_LIFETIME", 300),
+		ConnMaxIdleTime: getEnvInt("DB_CONN_MAX_IDLE_TIME", 60),
 	}
 	cfg.Database.Port, err = strconv.Atoi(os.Getenv("DB_PORT"))
 	if err != nil {
@@ -98,8 +118,10 @@ func Load() (*Config, error) {
 	}
 
 	cfg.Redis = RedisConfig{
-		Host:     getEnv("REDIS_HOST", "localhost"),
-		Password: getEnv("REDIS_PASSWORD", ""),
+		Host:         getEnv("REDIS_HOST", "localhost"),
+		Password:     getEnv("REDIS_PASSWORD", ""),
+		ClusterMode:  getEnv("REDIS_CLUSTER_MODE", "false") == "true",
+		ClusterNodes: parseBrokers(getEnv("REDIS_CLUSTER_NODES", "")),
 	}
 	cfg.Redis.Port, err = strconv.Atoi(os.Getenv("REDIS_PORT"))
 	if err != nil {
@@ -120,6 +142,16 @@ func Load() (*Config, error) {
 	cfg.Email.SMTPPort, err = strconv.Atoi(os.Getenv("SMTP_PORT"))
 	if err != nil {
 		cfg.Email.SMTPPort = 587
+	}
+
+	cfg.Kafka = KafkaConfig{
+		Brokers: parseBrokers(getEnv("KAFKA_BROKERS", "localhost:9092")),
+		Enabled: getEnv("KAFKA_ENABLED", "false") == "true",
+	}
+
+	cfg.WsGateway = WsGatewayConfig{
+		Enabled:    getEnv("WS_GATEWAY_ENABLED", "false") == "true",
+		InstanceID: getEnv("WS_INSTANCE_ID", ""),
 	}
 
 	return cfg, nil
@@ -172,4 +204,28 @@ func (c *DatabaseConfig) DSN() string {
 
 func (c *RedisConfig) Addr() string {
 	return fmt.Sprintf("%s:%d", c.Host, c.Port)
+}
+
+func parseOrigins(s string) []string {
+	parts := strings.Split(s, ",")
+	origins := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			origins = append(origins, p)
+		}
+	}
+	return origins
+}
+
+func parseBrokers(s string) []string {
+	parts := strings.Split(s, ",")
+	brokers := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			brokers = append(brokers, p)
+		}
+	}
+	return brokers
 }

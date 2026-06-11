@@ -1,10 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Card, Row, Col, Tag, Button, Empty, Pagination, Input, Select, Space } from 'antd'
-import { CalendarOutlined, EnvironmentOutlined, SearchOutlined } from '@ant-design/icons'
+import { Tag, Empty, Pagination, Input, Select } from 'antd'
+import { SearchOutlined } from '@ant-design/icons'
 import { useNavigate } from 'react-router-dom'
 import { getEvents, Event } from '../../api/events'
-import { getEventGradient } from '../../theme/gradients'
-import SkeletonCard from '../../components/SkeletonCard'
 
 const statusMap: Record<string, { color: string; text: string }> = {
   draft: { color: 'default', text: '草稿' },
@@ -25,7 +23,7 @@ export default function Events() {
 
   useEffect(() => {
     setLoading(true)
-    getEvents(page, 12)
+    getEvents(page, 20)
       .then((res) => {
         setEvents(res.data.data)
         setTotal(res.data.total)
@@ -48,122 +46,129 @@ export default function Events() {
   }, [events, searchText, statusFilter])
 
   return (
-    <div className="animate-slide-up">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 12 }}>
-        <h2 style={{ margin: 0, fontSize: 24, fontWeight: 700 }}>活动列表</h2>
-        <Space>
-          <Input
-            placeholder="搜索活动名称或地点"
-            prefix={<SearchOutlined style={{ color: 'var(--color-text-tertiary)' }} />}
-            value={searchText}
-            onChange={(e) => setSearchText(e.target.value)}
-            style={{ width: 250, borderRadius: 24 }}
-            allowClear
-          />
-          <Select
-            value={statusFilter}
-            onChange={setStatusFilter}
-            style={{ width: 120 }}
-            options={[
-              { value: 'all', label: '全部状态' },
-              { value: 'on_sale', label: '售票中' },
-              { value: 'off_sale', label: '已下架' },
-              { value: 'ended', label: '已结束' },
-            ]}
-          />
-        </Space>
+    <div className="page-enter">
+      {/* Header */}
+      <div className="page-header">
+        <h1>活动</h1>
+        <div className="subtitle">浏览所有票务活动</div>
       </div>
 
+      {/* Filters */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 24,
+        flexWrap: 'wrap',
+        gap: 12,
+      }}>
+        <Input
+          placeholder="搜索活动名称或地点"
+          prefix={<SearchOutlined style={{ color: 'var(--color-text-tertiary)' }} />}
+          value={searchText}
+          onChange={(e) => setSearchText(e.target.value)}
+          style={{ width: 280 }}
+          allowClear
+        />
+        <Select
+          value={statusFilter}
+          onChange={setStatusFilter}
+          style={{ width: 120 }}
+          options={[
+            { value: 'all', label: '全部' },
+            { value: 'on_sale', label: '售票中' },
+            { value: 'off_sale', label: '已下架' },
+            { value: 'ended', label: '已结束' },
+          ]}
+        />
+      </div>
+
+      {/* Content */}
       {loading ? (
-        <SkeletonCard variant="card" count={8} />
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ height: 72, marginBottom: 1 }} />
+          ))}
+        </div>
       ) : filteredEvents.length === 0 ? (
         <Empty description="暂无活动" />
       ) : (
         <>
-          <Row gutter={[16, 16]}>
+          {/* Table-style list */}
+          <div style={{ border: '1px solid var(--color-border)' }}>
+            {/* Header */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 120px 160px 100px 100px',
+              gap: 16,
+              padding: '12px 20px',
+              background: 'var(--color-bg-container)',
+              borderBottom: '1px solid var(--color-border)',
+              fontSize: 12,
+              color: 'var(--color-text-tertiary)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+              fontFamily: 'var(--font-mono)',
+            }}>
+              <div>活动</div>
+              <div>日期</div>
+              <div>地点</div>
+              <div>库存</div>
+              <div>状态</div>
+            </div>
+
+            {/* Rows */}
             {filteredEvents.map((event) => (
-              <Col key={event.id} xs={24} sm={12} lg={8} xl={6}>
-                <Card
-                  hoverable
-                  onClick={() => navigate(`/events/${event.id}`)}
-                  style={{ borderRadius: 16, overflow: 'hidden', cursor: 'pointer' }}
-                  bodyStyle={{ padding: 16 }}
-                  cover={
-                    <div style={{
-                      height: 160,
-                      background: getEventGradient(event.id),
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      position: 'relative',
-                      overflow: 'hidden',
-                    }}>
-                      <div style={{
-                        position: 'absolute',
-                        inset: 0,
-                        background: 'radial-gradient(circle at 30% 50%, rgba(255,255,255,0.1) 0%, transparent 60%)',
-                      }} />
-                      <span style={{
-                        color: '#fff',
-                        fontSize: 28,
-                        fontWeight: 700,
-                        textShadow: '0 2px 8px rgba(0,0,0,0.2)',
-                        position: 'relative',
-                        zIndex: 1,
-                      }}>
-                        {event.title.slice(0, 4)}
-                      </span>
-                      <Tag
-                        color={statusMap[event.status]?.color}
-                        style={{
-                          position: 'absolute',
-                          top: 12,
-                          right: 12,
-                          borderRadius: 8,
-                          fontWeight: 500,
-                          zIndex: 1,
-                        }}
-                      >
-                        {statusMap[event.status]?.text}
-                      </Tag>
-                    </div>
-                  }
-                >
-                  <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 8, lineHeight: 1.4 }}>
-                    {event.title}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)', fontSize: 13, marginBottom: 4 }}>
-                    <CalendarOutlined />
-                    {new Date(event.start_time).toLocaleDateString('zh-CN')}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--color-text-secondary)', fontSize: 13, marginBottom: 12 }}>
-                    <EnvironmentOutlined />
-                    {event.location}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--color-gold)', fontSize: 20, fontWeight: 700 }}>
-                      {event.total_stock > 0 ? `${event.total_stock} 张` : '暂无票'}
-                    </span>
-                    <Button
-                      type="primary"
-                      size="small"
-                      disabled={event.status !== 'on_sale'}
-                      style={{ borderRadius: 8 }}
-                    >
-                      {event.status === 'on_sale' ? '立即抢票' : '查看'}
-                    </Button>
-                  </div>
-                </Card>
-              </Col>
+              <button
+                key={event.id}
+                onClick={() => navigate(`/events/${event.id}`)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 120px 160px 100px 100px',
+                  gap: 16,
+                  padding: '16px 20px',
+                  border: 'none',
+                  borderBottom: '1px solid var(--color-border)',
+                  background: 'transparent',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  width: '100%',
+                  transition: 'background 0.1s',
+                  alignItems: 'center',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--color-accent-soft)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{ fontWeight: 600, fontSize: 15, color: 'var(--color-text-primary)' }}>
+                  {event.title}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontFamily: 'var(--font-mono)' }}>
+                  {new Date(event.start_time).toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })}
+                </div>
+                <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {event.location}
+                </div>
+                <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)', color: event.total_stock > 0 ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)' }}>
+                  {event.total_stock > 0 ? event.total_stock : '—'}
+                </div>
+                <div>
+                  <Tag color={statusMap[event.status]?.color}>
+                    {statusMap[event.status]?.text}
+                  </Tag>
+                </div>
+              </button>
             ))}
-          </Row>
+          </div>
+
+          {/* Pagination */}
           <div style={{ textAlign: 'center', marginTop: 24 }}>
             <Pagination
               current={page}
               total={total}
-              pageSize={12}
+              pageSize={20}
               onChange={setPage}
               showTotal={(t) => `共 ${t} 个活动`}
+              size="small"
             />
           </div>
         </>

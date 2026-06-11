@@ -39,11 +39,21 @@ func (m *mockUserRepo) Create(user *db.User) error {
 	return nil
 }
 
+func (m *mockUserRepo) UpdateRole(id uint, role string) error {
+	for _, u := range m.users {
+		if u.ID == id {
+			u.Role = role
+			return nil
+		}
+	}
+	return nil
+}
+
 var _ repository.UserRepository = (*mockUserRepo)(nil)
 
 func TestAuthService_Register(t *testing.T) {
 	repo := newMockUserRepo()
-	svc := NewAuthService(repo, "test-secret", 3600)
+	svc := NewAuthService(repo, "test-secret", 3600, nil)
 
 	err := svc.Register(RegisterInput{
 		Username: "testuser",
@@ -61,7 +71,7 @@ func TestAuthService_Register(t *testing.T) {
 
 func TestAuthService_Login(t *testing.T) {
 	repo := newMockUserRepo()
-	svc := NewAuthService(repo, "test-secret", 3600)
+	svc := NewAuthService(repo, "test-secret", 3600, nil)
 
 	err := svc.Register(RegisterInput{
 		Username: "testuser",
@@ -90,7 +100,7 @@ func TestAuthService_Login(t *testing.T) {
 
 func TestAuthService_Login_InvalidCredentials(t *testing.T) {
 	repo := newMockUserRepo()
-	svc := NewAuthService(repo, "test-secret", 3600)
+	svc := NewAuthService(repo, "test-secret", 3600, nil)
 
 	_, err := svc.Login("nonexistent", "password123")
 	if err == nil {
@@ -100,7 +110,7 @@ func TestAuthService_Login_InvalidCredentials(t *testing.T) {
 
 func TestAuthService_Login_WrongPassword(t *testing.T) {
 	repo := newMockUserRepo()
-	svc := NewAuthService(repo, "test-secret", 3600)
+	svc := NewAuthService(repo, "test-secret", 3600, nil)
 
 	err := svc.Register(RegisterInput{
 		Username: "testuser",

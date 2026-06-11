@@ -10,6 +10,7 @@ type UserRepository interface {
 	FindByID(id uint) (*db.User, error)
 	FindByUsername(username string) (*db.User, error)
 	Create(user *db.User) error
+	UpdateRole(id uint, role string) error
 }
 
 type userRepository struct {
@@ -38,4 +39,8 @@ func (r *userRepository) FindByUsername(username string) (*db.User, error) {
 
 func (r *userRepository) Create(user *db.User) error {
 	return r.db.Create(user).Error
+}
+
+func (r *userRepository) UpdateRole(id uint, role string) error {
+	return r.db.Model(&db.User{}).Where("id = ?", id).Update("role", role).Error
 }

@@ -4,28 +4,34 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"order-system/internal/mq"
 	"order-system/internal/pkg/constants"
+	"order-system/internal/pkg/db"
 	"order-system/internal/pkg/redis/pkgredis"
 	"order-system/internal/repository"
 )
 
 type TicketService struct {
+	db             *gorm.DB
 	redis          *pkgredis.RedisClientWrapper
-	producer       *mq.TicketProducer
+	producer       TicketPublisher
 	ticketRepo     repository.TicketRepository
 	ticketTypeRepo repository.TicketTypeRepository
 	eventRepo      repository.EventRepository
 }
 
 func NewTicketService(
+	db *gorm.DB,
 	redis *pkgredis.RedisClientWrapper,
-	producer *mq.TicketProducer,
+	producer TicketPublisher,
 	ticketRepo repository.TicketRepository,
 	ticketTypeRepo repository.TicketTypeRepository,
 	eventRepo repository.EventRepository,
 ) *TicketService {
 	return &TicketService{
+		db:             db,
 		redis:          redis,
 		producer:       producer,
 		ticketRepo:     ticketRepo,
@@ -90,7 +96,13 @@ func (s *TicketService) PurchaseTicket(ctx context.Context, input *PurchaseTicke
 		return nil, fmt.Errorf("超出每用户限购数量 %d", ticketType.MaxPerUser)
 	}
 
-	activityID := fmt.Sprintf("ticket:%d", input.EventID)
+	// 秒杀 key 维度：有 ShowID 时按 Show 隔离库存，否则按 Event 隔离
+	var activityID string
+	if input.ShowID > 0 {
+		activityID = fmt.Sprintf("ticket:%d:show:%d", input.EventID, input.ShowID)
+	} else {
+		activityID = fmt.Sprintf("ticket:%d", input.EventID)
+	}
 
 	result, err := s.redis.SeckillDeduct(ctx, activityID,
 		fmt.Sprint(input.TicketTypeID), fmt.Sprint(input.UserID))
@@ -105,7 +117,7 @@ func (s *TicketService) PurchaseTicket(ctx context.Context, input *PurchaseTicke
 		return nil, ErrTicketDuplicate
 	}
 
-	orderMsg := mq.NewTicketMessage(input.UserID, input.EventID, input.TicketTypeID, input.Quantity)
+	orderMsg := mq.NewTicketMessageWithShow(input.UserID, input.EventID, input.ShowID, input.TicketTypeID, input.Quantity)
 	if err := s.producer.PublishTicket(ctx, orderMsg); err != nil {
 		s.redis.SeckillRollback(ctx, activityID,
 			fmt.Sprint(input.TicketTypeID), fmt.Sprint(input.UserID))
@@ -217,6 +229,7 @@ func (s *TicketService) PayTicket(userID, ticketID uint) error {
 }
 
 func (s *TicketService) CancelTicket(ctx context.Context, userID, ticketID uint) error {
+	// 先查询票务（事务外做权限和状态校验）
 	ticket, err := s.ticketRepo.FindByID(ticketID)
 	if err != nil || ticket == nil {
 		return fmt.Errorf("票务不存在")
@@ -230,17 +243,36 @@ func (s *TicketService) CancelTicket(ctx context.Context, userID, ticketID uint)
 		return err
 	}
 
-	if err := s.ticketRepo.UpdateStatus(ticketID, constants.TicketStatusCancelled); err != nil {
+	// 使用事务保证状态更新和库存回滚的原子性
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		// 更新票务状态
+		if err := tx.Model(&db.Ticket{}).Where("id = ?", ticketID).
+			Update("status", constants.TicketStatusCancelled).Error; err != nil {
+			return fmt.Errorf("failed to update ticket status: %w", err)
+		}
+
+		// 回滚数据库库存（原子扣减）
+		result := tx.Model(&db.TicketType{}).Where("id = ?", ticket.TicketTypeID).
+			Update("stock", gorm.Expr("stock + ?", ticket.Quantity))
+		if result.Error != nil {
+			return fmt.Errorf("failed to rollback stock: %w", result.Error)
+		}
+
+		return nil
+	})
+
+	if err != nil {
 		return err
 	}
 
-	// 回滚数据库库存
-	if err := s.ticketTypeRepo.UpdateStock(ticket.TicketTypeID, -ticket.Quantity); err != nil {
-		return fmt.Errorf("failed to rollback stock: %w", err)
+	// 事务成功后回滚 Redis 库存（最终一致性可接受）
+	// 使用与购买时相同的 key 维度
+	var activityID string
+	if ticket.ShowID > 0 {
+		activityID = fmt.Sprintf("ticket:%d:show:%d", ticket.EventID, ticket.ShowID)
+	} else {
+		activityID = fmt.Sprintf("ticket:%d", ticket.EventID)
 	}
-
-	// 回滚 Redis 库存
-	activityID := fmt.Sprintf("ticket:%d", ticket.EventID)
 	s.redis.SeckillRollback(ctx, activityID,
 		fmt.Sprint(ticket.TicketTypeID), fmt.Sprint(userID))
 

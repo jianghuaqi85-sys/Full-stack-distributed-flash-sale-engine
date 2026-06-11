@@ -1,0 +1,62 @@
+groups:
+  - name: ticket-system-alerts
+    rules:
+      # Kafka 消费延迟告警
+      - alert: KafkaConsumerLagHigh
+        expr: kafka_consumer_lag > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Kafka 消费延迟过高"
+          description: "Kafka 消费者延迟超过 10000 条消息，当前值: {{ $value }}"
+
+      # HTTP 错误率告警
+      - alert: HTTPErrorRateHigh
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.01
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "HTTP 5xx 错误率超过 1%"
+          description: "过去 5 分钟内 5xx 错误率: {{ $value | humanizePercentage }}"
+
+      # P99 延迟告警
+      - alert: HTTPP99LatencyHigh
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP P99 延迟超过 500ms"
+          description: "P99 延迟: {{ $value | humanizeDuration }}"
+
+      # Redis 连接失败告警
+      - alert: RedisConnectionFailed
+        expr: redis_connected == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis 连接失败"
+          description: "无法连接到 Redis 实例"
+
+      # 数据库连接池使用率告警
+      - alert: DBConnectionPoolHigh
+        expr: db_open_connections / db_max_open_connections > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库连接池使用率超过 80%"
+          description: "当前使用率: {{ $value | humanizePercentage }}"
+
+      # WebSocket 连接数异常
+      - alert: WebSocketConnectionDrop
+        expr: delta(ws_connections_total[5m]) < -100
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket 连接数大幅下降"
+          description: "过去 5 分钟连接数下降: {{ $value }}"

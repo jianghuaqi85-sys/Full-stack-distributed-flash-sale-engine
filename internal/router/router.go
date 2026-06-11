@@ -2,6 +2,7 @@ package router
 
 import (
 	"context"
+	"log"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -9,9 +10,11 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"order-system/internal/gateway"
 	"order-system/internal/handler"
 	"order-system/internal/middleware"
 	"order-system/internal/mq"
+	"order-system/internal/pkg/cache"
 	"order-system/internal/pkg/constants"
 	"order-system/internal/pkg/redis/pkgredis"
 	"order-system/internal/pkg/ws"
@@ -20,7 +23,15 @@ import (
 	"order-system/internal/service"
 )
 
-func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *redis.Client) *gin.Engine {
+// MQMode 消息队列模式
+type MQMode string
+
+const (
+	MQModeKafka      MQMode = "kafka"
+	MQModeRedisStream MQMode = "redis_stream"
+)
+
+func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *redis.Client, allowOrigins []string, kafkaBrokers []string, kafkaEnabled bool, wsEnabled bool, instanceID string) *gin.Engine {
 	r := gin.New()
 
 	r.Use(middleware.RecoveryMiddleware())
@@ -29,7 +40,7 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 	r.Use(gin.Logger())
 
 	r.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
+		AllowOrigins:     allowOrigins,
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
@@ -37,71 +48,136 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 		MaxAge:           12 * time.Hour,
 	}))
 
+	// === 基础设施 ===
 	userRepo := repository.NewUserRepository(db)
 	eventRepo := repository.NewEventRepository(db)
 	ticketTypeRepo := repository.NewTicketTypeRepository(db)
 	ticketRepo := repository.NewTicketRepository(db)
-
-	// 初始化 Redis 客户端
 	redisWrapper := pkgredis.NewClientFromRaw(redisClient)
 
-	authService := service.NewAuthService(userRepo, jwtSecret, constants.DefaultJWTExpire)
+	// 本地缓存（库存快照，100K 计数器，64MB 最大成本）
+	localCache, err := cache.NewLocalCache(100_000, 64<<20)
+	if err != nil {
+		log.Printf("[Router] Failed to create local cache: %v, continuing without it", err)
+	}
+
+	// === 服务层 ===
+	authService := service.NewAuthService(userRepo, jwtSecret, constants.DefaultJWTExpire, redisClient)
 	eventService := service.NewEventService(eventRepo, ticketTypeRepo, redisWrapper)
 
+	// === Handler 层 ===
 	authHandler := handler.NewAuthHandler(authService)
 	healthHandler := handler.NewHealthHandler(db, redisClient)
 	eventHandler := handler.NewEventHandler(eventService)
 
+	// === WebSocket Hub ===
 	hub := ws.NewHub(jwtSecret, redisClient)
 
-	// 初始化票务消息队列
-	ticketProducer := mq.NewTicketProducer(redisWrapper)
+	// Set allowed origins from config
+	if len(allowOrigins) > 0 {
+		hub.SetAllowedOrigins(allowOrigins)
+	}
 
-	// 初始化票务服务
-	ticketService := service.NewTicketService(redisWrapper, ticketProducer, ticketRepo, ticketTypeRepo, eventRepo)
+	// === 分布式 WebSocket 路由（可选）===
+	if wsEnabled {
+		if instanceID == "" {
+			instanceID = "api-" + time.Now().Format("20060102150405")
+		}
+		wsRouter := gateway.NewWsRouter(redisClient, instanceID)
+		wsRouter.SetDeliveryFuncs(
+			func(userID string, message []byte) {
+				hub.SendToUserLocal(userID, message)
+			},
+			func(roomID string, message []byte) {
+				hub.BroadcastToRoomLocal(roomID, message)
+			},
+			func(message []byte) {
+				hub.BroadcastToAllLocal(message)
+			},
+		)
+		hub.SetWsRouter(wsRouter)
+		wsRouter.Start()
+		log.Printf("[Router] Distributed WebSocket enabled, instance=%s", instanceID)
+	}
+
+	// === 消息队列（支持 Kafka 和 Redis Stream 双模式）===
+	var ticketProducer service.TicketPublisher
+
+	if kafkaEnabled && len(kafkaBrokers) > 0 {
+		// Kafka 模式
+		log.Printf("[Router] Using Kafka message queue: brokers=%v", kafkaBrokers)
+		kafkaProducer, err := mq.NewTicketProducer(kafkaBrokers)
+		if err != nil {
+			log.Printf("[Router] Failed to create Kafka producer: %v, falling back to Redis Stream", err)
+			kafkaEnabled = false
+		} else {
+			ticketProducer = kafkaProducer
+
+			// 启动 Kafka 消费者
+			kafkaConsumer, err := mq.NewTicketConsumer(kafkaBrokers, db, hub, redisWrapper, localCache)
+			if err != nil {
+				log.Printf("[Router] Failed to create Kafka consumer: %v", err)
+			} else {
+				go kafkaConsumer.Start(ctx)
+			}
+		}
+	}
+
+	if !kafkaEnabled {
+		// Redis Stream 模式（降级方案）
+		log.Printf("[Router] Using Redis Stream message queue")
+		redisProducer := mq.NewRedisStreamProducer(redisWrapper)
+		ticketProducer = redisProducer
+
+		// 启动 Redis Stream 消费者
+		redisConsumer := mq.NewRedisStreamConsumer(redisWrapper, db, hub)
+		go redisConsumer.Start(ctx)
+	}
+
+	// === 票务服务 ===
+	ticketService := service.NewTicketService(db, redisWrapper, ticketProducer, ticketRepo, ticketTypeRepo, eventRepo)
 	ticketHandler := handler.NewTicketHandler(ticketService)
-
-	// 启动票务消费者
-	ticketConsumer := mq.NewTicketConsumer(redisWrapper, db, hub)
-	go ticketConsumer.Start(ctx)
 
 	// 启动票务过期检查（每分钟检查一次）
 	go service.StartTicketExpireChecker(ctx, ticketRepo, ticketTypeRepo, redisWrapper, 1*time.Minute)
 
-	// 初始化排队管理器
+	// === 排队管理器 ===
 	queueManager := queue.NewQueueManager(redisClient)
 	queueHandler := handler.NewQueueHandler(queueManager, hub)
 
-	// 初始化等候名单管理器
+	// === 等候名单管理器 ===
 	waitlistManager := queue.NewWaitlistManager(redisClient)
 	waitlistHandler := handler.NewWaitlistHandler(waitlistManager)
 
-	// 初始化促销码服务
+	// === 促销码服务 ===
 	promoCodeRepo := repository.NewPromoCodeRepository(db)
 	promoCodeService := service.NewPromoCodeService(promoCodeRepo)
 	promoCodeHandler := handler.NewPromoCodeHandler(promoCodeService)
 
-	// 初始化统计服务
-	statsService := service.NewStatsService(db)
+	// === 统计服务（带 Redis 缓存）===
+	statsService := service.NewStatsServiceWithRedis(db, redisClient)
 	statsHandler := handler.NewStatsHandler(statsService)
 
-	// 初始化票务转让服务
+	// === 票务转让服务 ===
 	transferRepo := repository.NewTicketTransferRepository(db)
 	transferService := service.NewTicketTransferService(ticketRepo, transferRepo, userRepo)
 	transferHandler := handler.NewTicketTransferHandler(transferService)
 
-	// 初始化场次服务
+	// === 场次服务 ===
 	showRepo := repository.NewShowRepository(db)
 	showService := service.NewShowService(showRepo, eventRepo, ticketTypeRepo)
 	showHandler := handler.NewShowHandler(showService)
 
-	// 初始化转让市场服务
+	// === 二手市场服务 ===
 	marketplaceRepo := repository.NewMarketplaceRepository(db)
-	marketplaceService := service.NewMarketplaceService(marketplaceRepo, ticketRepo, ticketTypeRepo, userRepo)
+	marketplaceService := service.NewMarketplaceService(db, marketplaceRepo, ticketRepo, ticketTypeRepo, userRepo, eventRepo)
 	marketplaceHandler := handler.NewMarketplaceHandler(marketplaceService)
+
+	// ========== 路由注册 ==========
 
 	r.GET("/health", healthHandler.HealthCheck)
 
+	// 公开接口（限流）
 	public := r.Group("")
 	public.Use(middleware.RateLimitMiddleware(redisClient, constants.PublicRateLimit, constants.RateLimitWindow))
 	{
@@ -116,6 +192,7 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 		apiAuth.POST("/auth/login", authHandler.Login)
 	}
 
+	// API 认证路由
 	api := r.Group("/api")
 	api.Use(middleware.JWTAuthWithBlacklist(db, jwtSecret, redisClient))
 	{
@@ -159,7 +236,7 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 			promoRoutes.GET("/:event_id", promoCodeHandler.GetPromoCodes)
 		}
 
-		// 票务路由
+		// 票务路由（秒杀限流）
 		tickets := api.Group("/tickets")
 		{
 			tickets.Use(middleware.SeckillRateLimitMiddleware(redisWrapper, constants.SeckillRateLimit, constants.SeckillWindow))
@@ -182,7 +259,7 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 			transferRoutes.GET("/history", transferHandler.GetTransferHistory)
 		}
 
-		// 转让市场路由
+		// 二手市场路由
 		marketplaceRoutes := api.Group("/marketplace")
 		{
 			marketplaceRoutes.GET("", marketplaceHandler.ListActive)
@@ -201,6 +278,9 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 	admin.Use(middleware.JWTAuthWithBlacklist(db, jwtSecret, redisClient))
 	admin.Use(middleware.RoleAuth("admin"))
 	{
+		// 用户管理路由
+		admin.POST("/users/role", authHandler.UpdateUserRole)
+
 		// 活动管理路由
 		adminEvent := admin.Group("/events")
 		{
@@ -246,7 +326,9 @@ func NewRouter(ctx context.Context, db *gorm.DB, jwtSecret string, redisClient *
 		}
 	}
 
-	r.GET("/ws", hub.ServeWS)
+	r.GET("/ws", func(c *gin.Context) {
+		hub.ServeWS(c)
+	})
 
 	return r
 }

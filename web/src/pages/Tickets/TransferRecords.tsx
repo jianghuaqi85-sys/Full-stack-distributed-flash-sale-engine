@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Card, Table, Tag, Empty } from 'antd'
-import { SwapOutlined } from '@ant-design/icons'
+import { Tag, Empty } from 'antd'
 import { getTransferHistory, TicketTransfer } from '../../api/transfer'
 
 const statusMap: Record<string, { color: string; text: string }> = {
@@ -20,71 +19,57 @@ export default function TransferRecords() {
 
   useEffect(() => {
     setLoading(true)
-    getTransferHistory()
-      .then((res) => setTransfers(res.data.data || []))
-      .finally(() => setLoading(false))
+    getTransferHistory().then((res) => setTransfers(res.data.data || [])).finally(() => setLoading(false))
   }, [])
 
-  const columns = [
-    {
-      title: '票务ID',
-      dataIndex: 'ticket_id',
-      key: 'ticket_id',
-    },
-    {
-      title: '转让类型',
-      dataIndex: 'transfer_type',
-      key: 'transfer_type',
-      render: (type: string) => {
-        const t = typeMap[type] || { color: 'default', text: type }
-        return <Tag color={t.color}>{t.text}</Tag>
-      },
-    },
-    {
-      title: '转让方',
-      dataIndex: 'from_user_id',
-      key: 'from_user_id',
-    },
-    {
-      title: '接收方',
-      dataIndex: 'to_user_id',
-      key: 'to_user_id',
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
-      key: 'status',
-      render: (status: string) => {
-        const s = statusMap[status] || { color: 'default', text: status }
-        return <Tag color={s.color}>{s.text}</Tag>
-      },
-    },
-    {
-      title: '原因',
-      dataIndex: 'reason',
-      key: 'reason',
-      ellipsis: true,
-    },
-    {
-      title: '时间',
-      dataIndex: 'created_at',
-      key: 'created_at',
-    },
-  ]
-
   return (
-    <Card
-      title={<><SwapOutlined /> 转让记录</>}
-      style={{ borderRadius: 16 }}
-    >
-      <Table
-        columns={columns}
-        dataSource={transfers}
-        rowKey="id"
-        loading={loading}
-        pagination={{ pageSize: 10 }}
-        locale={{ emptyText: <Empty description="暂无转让记录" /> }}
-      />
-    </Card>
+    <div className="page-enter">
+      <div className="page-header">
+        <h1>转让</h1>
+        <div className="subtitle">转让记录</div>
+      </div>
+
+      {loading ? (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-tertiary)' }}>加载中...</div>
+      ) : transfers.length === 0 ? (
+        <Empty description="暂无转让记录" />
+      ) : (
+        <div style={{ border: '1px solid var(--color-border)' }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '80px 100px 80px 80px 80px 1fr 140px',
+            gap: 16,
+            padding: '12px 20px',
+            borderBottom: '1px solid var(--color-border)',
+            fontSize: 12,
+            color: 'var(--color-text-tertiary)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            fontFamily: 'var(--font-mono)',
+          }}>
+            <div>票务</div><div>类型</div><div>转让方</div><div>接收方</div><div>状态</div><div>原因</div><div>时间</div>
+          </div>
+          {transfers.map(t => (
+            <div key={t.id} style={{
+              display: 'grid',
+              gridTemplateColumns: '80px 100px 80px 80px 80px 1fr 140px',
+              gap: 16,
+              padding: '12px 20px',
+              borderBottom: '1px solid var(--color-border)',
+              alignItems: 'center',
+              fontSize: 14,
+            }}>
+              <div style={{ fontFamily: 'var(--font-mono)' }}>{t.ticket_id}</div>
+              <div><Tag color={typeMap[t.transfer_type]?.color}>{typeMap[t.transfer_type]?.text}</Tag></div>
+              <div style={{ fontFamily: 'var(--font-mono)' }}>{t.from_user_id}</div>
+              <div style={{ fontFamily: 'var(--font-mono)' }}>{t.to_user_id}</div>
+              <div><Tag color={statusMap[t.status]?.color}>{statusMap[t.status]?.text}</Tag></div>
+              <div style={{ color: 'var(--color-text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.reason || '-'}</div>
+              <div style={{ fontSize: 13, fontFamily: 'var(--font-mono)' }}>{new Date(t.created_at).toLocaleDateString('zh-CN')}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

@@ -103,10 +103,7 @@ func (s *TicketTransferService) ApproveTransfer(transferID, adminID uint) error 
 		return fmt.Errorf("票务不存在")
 	}
 
-	ticket.UserID = transfer.ToUserID
-	ticket.TransferStatus = "approved"
-
-	if err := s.ticketRepo.UpdateStatus(ticket.ID, ticket.Status); err != nil {
+	if err := s.ticketRepo.UpdateOwner(ticket.ID, transfer.ToUserID); err != nil {
 		return fmt.Errorf("更新票务失败: %w", err)
 	}
 
@@ -181,10 +178,7 @@ func (s *TicketTransferService) DirectGift(userID uint, input RequestTransferInp
 		return nil, fmt.Errorf("创建转让记录失败: %w", err)
 	}
 
-	ticket.UserID = input.ToUserID
-	ticket.TransferStatus = "approved"
-	ticket.TransferredTo = input.ToUserID
-	if err := s.ticketRepo.UpdateStatus(ticket.ID, ticket.Status); err != nil {
+	if err := s.ticketRepo.UpdateOwner(ticket.ID, input.ToUserID); err != nil {
 		return nil, fmt.Errorf("更新票务失败: %w", err)
 	}
 

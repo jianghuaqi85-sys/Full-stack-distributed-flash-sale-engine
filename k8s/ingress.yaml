@@ -1,0 +1,105 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ticket-system-ingress
+  namespace: ticket-system
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "ws-gateway"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: api.ticket.example.com
+      http:
+        paths:
+          # 秒杀服务（高流量）
+          - path: /api/tickets/purchase
+            pathType: Exact
+            backend:
+              service:
+                name: seckill
+                port:
+                  number: 8080
+          - path: /api/events
+            pathType: Prefix
+            backend:
+              service:
+                name: seckill
+                port:
+                  number: 8080
+          - path: /api/queue
+            pathType: Prefix
+            backend:
+              service:
+                name: seckill
+                port:
+                  number: 8080
+          # 订单服务
+          - path: /api/tickets
+            pathType: Prefix
+            backend:
+              service:
+                name: order
+                port:
+                  number: 8080
+          - path: /api/transfer
+            pathType: Prefix
+            backend:
+              service:
+                name: order
+                port:
+                  number: 8080
+          - path: /api/marketplace
+            pathType: Prefix
+            backend:
+              service:
+                name: order
+                port:
+                  number: 8080
+          - path: /api/promo
+            pathType: Prefix
+            backend:
+              service:
+                name: order
+                port:
+                  number: 8080
+          - path: /api/auth
+            pathType: Prefix
+            backend:
+              service:
+                name: order
+                port:
+                  number: 8080
+          - path: /api/profile
+            pathType: Exact
+            backend:
+              service:
+                name: order
+                port:
+                  number: 8080
+          # 管理服务
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: admin
+                port:
+                  number: 8080
+          # WebSocket 网关
+          - path: /ws
+            pathType: Exact
+            backend:
+              service:
+                name: ws-gateway
+                port:
+                  number: 8081
+          # 健康检查
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: order
+                port:
+                  number: 8080

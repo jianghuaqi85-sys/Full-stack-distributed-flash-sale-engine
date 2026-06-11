@@ -9,10 +9,10 @@ import (
 
 type User struct {
 	gorm.Model
-	Username string `gorm:"unique;not null"`
-	Password string `gorm:"not null"`
-	Email    string `gorm:"unique;not null"`
-	Role     string `gorm:"default:user"`
+	Username string `gorm:"unique;not null" json:"username"`
+	Password string `gorm:"not null" json:"-"`
+	Email    string `gorm:"unique;not null" json:"email"`
+	Role     string `gorm:"default:user" json:"role"`
 }
 
 type Event struct {
@@ -107,6 +107,11 @@ type PromoCode struct {
 }
 
 func NewConnection(dsn string, maxOpenConns, maxIdleConns, connMaxLifetime int) (*gorm.DB, error) {
+	return NewConnectionWithIdleTime(dsn, maxOpenConns, maxIdleConns, connMaxLifetime, 0)
+}
+
+// NewConnectionWithIdleTime 创建数据库连接，支持 ConnMaxIdleTime 配置
+func NewConnectionWithIdleTime(dsn string, maxOpenConns, maxIdleConns, connMaxLifetime, connMaxIdleTime int) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		PrepareStmt:            true,
 		SkipDefaultTransaction: true,
@@ -123,6 +128,9 @@ func NewConnection(dsn string, maxOpenConns, maxIdleConns, connMaxLifetime int) 
 	sqlDB.SetMaxOpenConns(maxOpenConns)
 	sqlDB.SetMaxIdleConns(maxIdleConns)
 	sqlDB.SetConnMaxLifetime(time.Duration(connMaxLifetime) * time.Second)
+	if connMaxIdleTime > 0 {
+		sqlDB.SetConnMaxIdleTime(time.Duration(connMaxIdleTime) * time.Second)
+	}
 
 	return db, nil
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"order-system/internal/pkg/db"
 	"order-system/internal/service"
 )
 
@@ -23,7 +22,7 @@ func (h *TicketHandler) PurchaseTicket(c *gin.Context) {
 		EventID      uint `json:"event_id" binding:"required"`
 		ShowID       uint `json:"show_id"`
 		TicketTypeID uint `json:"ticket_type_id" binding:"required"`
-		Quantity     int  `json:"quantity" binding:"required,min=1"`
+		Quantity     int  `json:"quantity" binding:"required,min=1,max=10"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -31,15 +30,8 @@ func (h *TicketHandler) PurchaseTicket(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未认证"})
-		return
-	}
-
-	userModel, ok := user.(db.User)
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户类型错误"})
 		return
 	}
 
@@ -72,28 +64,10 @@ func (h *TicketHandler) PurchaseTicket(c *gin.Context) {
 }
 
 func (h *TicketHandler) GetMyTickets(c *gin.Context) {
-	pageStr := c.DefaultQuery("page", "1")
-	limitStr := c.DefaultQuery("limit", "10")
+	page, limit := parsePageLimit(c, 1, 10, 100)
 
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit < 1 {
-		limit = 10
-	}
-
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未认证"})
-		return
-	}
-
-	userModel, ok := user.(db.User)
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户类型错误"})
 		return
 	}
 
@@ -119,15 +93,8 @@ func (h *TicketHandler) GetTicketDetail(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未认证"})
-		return
-	}
-
-	userModel, ok := user.(db.User)
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户类型错误"})
 		return
 	}
 
@@ -152,15 +119,8 @@ func (h *TicketHandler) PayTicket(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未认证"})
-		return
-	}
-
-	userModel, ok := user.(db.User)
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户类型错误"})
 		return
 	}
 
@@ -180,15 +140,8 @@ func (h *TicketHandler) CancelTicket(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未认证"})
-		return
-	}
-
-	userModel, ok := user.(db.User)
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户类型错误"})
 		return
 	}
 
@@ -208,15 +161,8 @@ func (h *TicketHandler) UseTicket(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "用户未认证"})
-		return
-	}
-
-	userModel, ok := user.(db.User)
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "用户类型错误"})
 		return
 	}
 

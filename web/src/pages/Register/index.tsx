@@ -1,10 +1,6 @@
-import { Form, Input, Button, Typography, message } from 'antd'
-import { UserOutlined, LockOutlined, MailOutlined } from '@ant-design/icons'
+import { Form, Input, Button, message } from 'antd'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../../stores/authStore'
-import BrandLogo from '../../components/BrandLogo'
-
-const { Text } = Typography
 
 export default function Register() {
   const navigate = useNavigate()
@@ -21,103 +17,122 @@ export default function Register() {
   }
 
   return (
-    <div className="login-bg" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-      <div className="glass-card animate-slide-up" style={{ width: 420, padding: '40px 36px' }}>
-        <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <BrandLogo size={48} />
+    <div className="login-container">
+      {/* Left — Form */}
+      <div className="login-form-side">
+        <div style={{ width: 360, maxWidth: '100%' }}>
+          <div style={{ marginBottom: 48 }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)',
+              fontSize: 14,
+              fontWeight: 700,
+              color: 'var(--color-text-primary)',
+              letterSpacing: '-0.04em',
+            }}>
+              TICKET
+            </span>
+          </div>
           <h1 style={{
-            margin: '16px 0 4px',
-            fontSize: 24,
+            fontSize: 32,
             fontWeight: 700,
-            color: 'var(--color-text-inverse)',
+            letterSpacing: '-0.03em',
+            color: 'var(--color-text-primary)',
+            marginBottom: 8,
           }}>
-            注册账号
+            注册
           </h1>
-          <Text style={{ color: 'rgba(255,255,255,0.6)' }}>创建您的新账号</Text>
-        </div>
-        <Form onFinish={onFinish} autoComplete="off" size="large">
-          <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-            <Input
-              prefix={<UserOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
-              placeholder="用户名"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 12,
-              }}
-            />
-          </Form.Item>
-          <Form.Item name="email" rules={[{ required: true, type: 'email', message: '请输入有效邮箱' }]}>
-            <Input
-              prefix={<MailOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
-              placeholder="邮箱"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 12,
-              }}
-            />
-          </Form.Item>
-          <Form.Item name="password" rules={[{ required: true, min: 6, message: '密码至少6位' }]}>
-            <Input.Password
-              prefix={<LockOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
-              placeholder="密码"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 12,
-              }}
-            />
-          </Form.Item>
-          <Form.Item
-            name="confirmPassword"
-            dependencies={['password']}
-            rules={[
-              { required: true, message: '请确认密码' },
-              ({ getFieldValue }) => ({
-                validator(_, value) {
-                  if (!value || getFieldValue('password') === value) {
-                    return Promise.resolve()
-                  }
-                  return Promise.reject(new Error('两次密码不一致'))
-                },
-              }),
-            ]}
-          >
-            <Input.Password
-              prefix={<LockOutlined style={{ color: 'rgba(0,0,0,0.45)' }} />}
-              placeholder="确认密码"
-              style={{
-                background: 'rgba(255,255,255,0.08)',
-                border: '1px solid rgba(255,255,255,0.15)',
-                borderRadius: 12,
-              }}
-            />
-          </Form.Item>
-          <Form.Item>
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              block
-              style={{
-                height: 48,
-                borderRadius: 12,
-                fontWeight: 600,
-                fontSize: 16,
-                background: 'linear-gradient(135deg, #5B2FE8, #D4A843)',
-                border: 'none',
-                boxShadow: '0 4px 20px rgba(91, 47, 232, 0.4)',
-              }}
+          <p style={{
+            fontSize: 14,
+            color: 'var(--color-text-tertiary)',
+            marginBottom: 32,
+          }}>
+            创建新账号开始使用
+          </p>
+          <Form onFinish={onFinish} autoComplete="off" layout="vertical" requiredMark={false}>
+            <Form.Item
+              name="username"
+              rules={[{ required: true, message: '请输入用户名' }]}
+              style={{ marginBottom: 16 }}
             >
-              注册
-            </Button>
-          </Form.Item>
-        </Form>
-        <div style={{ textAlign: 'center' }}>
-          <Text style={{ color: 'rgba(255,255,255,0.5)' }}>已有账号？</Text>
-          <Link to="/login" style={{ color: '#D4A843', fontWeight: 500, marginLeft: 4 }}>去登录</Link>
+              <Input
+                placeholder="用户名"
+                size="large"
+                style={{ height: 48, fontSize: 15 }}
+              />
+            </Form.Item>
+            <Form.Item
+              name="email"
+              rules={[{ required: true, type: 'email', message: '请输入有效邮箱' }]}
+              style={{ marginBottom: 16 }}
+            >
+              <Input
+                placeholder="邮箱"
+                size="large"
+                style={{ height: 48, fontSize: 15 }}
+              />
+            </Form.Item>
+            <Form.Item
+              name="password"
+              rules={[{ required: true, min: 6, message: '密码至少6位' }]}
+              style={{ marginBottom: 16 }}
+            >
+              <Input.Password
+                placeholder="密码"
+                size="large"
+                style={{ height: 48, fontSize: 15 }}
+              />
+            </Form.Item>
+            <Form.Item
+              name="confirmPassword"
+              dependencies={['password']}
+              rules={[
+                { required: true, message: '请确认密码' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('password') === value) {
+                      return Promise.resolve()
+                    }
+                    return Promise.reject(new Error('两次密码不一致'))
+                  },
+                }),
+              ]}
+              style={{ marginBottom: 24 }}
+            >
+              <Input.Password
+                placeholder="确认密码"
+                size="large"
+                style={{ height: 48, fontSize: 15 }}
+              />
+            </Form.Item>
+            <Form.Item style={{ marginBottom: 16 }}>
+              <Button
+                type="primary"
+                htmlType="submit"
+                loading={loading}
+                block
+                style={{
+                  height: 48,
+                  fontWeight: 600,
+                  fontSize: 15,
+                }}
+              >
+                注册
+              </Button>
+            </Form.Item>
+          </Form>
+          <div style={{ fontSize: 14, color: 'var(--color-text-tertiary)' }}>
+            已有账号？{' '}
+            <Link to="/login" style={{ color: 'var(--color-accent)', fontWeight: 500 }}>
+              登录
+            </Link>
+          </div>
         </div>
+      </div>
+
+      {/* Right — Visual */}
+      <div className="login-visual-side">
+        <h2>TICKET</h2>
+        <p>分布式票务系统 — 高性能秒杀、实时排队、安全交易</p>
       </div>
     </div>
   )

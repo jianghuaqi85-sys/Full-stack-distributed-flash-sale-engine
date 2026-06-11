@@ -40,7 +40,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	database, err := db.NewConnection(cfg.Database.DSN(), cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns, cfg.Database.ConnMaxLifetime)
+	database, err := db.NewConnectionWithIdleTime(cfg.Database.DSN(), cfg.Database.MaxOpenConns, cfg.Database.MaxIdleConns, cfg.Database.ConnMaxLifetime, cfg.Database.ConnMaxIdleTime)
 	if err != nil {
 		logger.Error("Failed to connect to database", "error", err)
 		os.Exit(1)
@@ -72,7 +72,7 @@ func main() {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return startHTTPServer(ctx, database, cfg.AppPort, cfg.JWT.Secret, redisClient.Client())
+		return startHTTPServer(ctx, database, cfg.AppPort, cfg.JWT.Secret, redisClient.Client(), cfg.AllowOrigins, cfg.Kafka.Brokers, cfg.Kafka.Enabled, cfg.WsGateway.Enabled, cfg.WsGateway.InstanceID)
 	})
 
 	sigChan := make(chan os.Signal, 1)
@@ -96,8 +96,8 @@ func main() {
 	logger.Info("All services stopped gracefully")
 }
 
-func startHTTPServer(ctx context.Context, database *gorm.DB, port int, jwtSecret string, redisClient *goredis.Client) error {
-	r := router.NewRouter(ctx, database, jwtSecret, redisClient)
+func startHTTPServer(ctx context.Context, database *gorm.DB, port int, jwtSecret string, redisClient *goredis.Client, allowOrigins []string, kafkaBrokers []string, kafkaEnabled bool, wsEnabled bool, instanceID string) error {
+	r := router.NewRouter(ctx, database, jwtSecret, redisClient, allowOrigins, kafkaBrokers, kafkaEnabled, wsEnabled, instanceID)
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", port),

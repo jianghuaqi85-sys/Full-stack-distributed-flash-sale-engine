@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -78,11 +79,15 @@ func JWTAuthWithBlacklist(db *gorm.DB, secret string, redisClient *redis.Client)
 			return
 		}
 
-		if exists, err := redisClient.Exists(c.Request.Context(), "blacklist:"+tokenString).Result(); err == nil && exists > 0 {
+		ctx := c.Request.Context()
+
+		// 检查 token 黑名单
+		if exists, err := redisClient.Exists(ctx, "blacklist:"+tokenString).Result(); err == nil && exists > 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token revoked"})
 			return
 		}
 
+		// 解析 JWT
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -107,10 +112,23 @@ func JWTAuthWithBlacklist(db *gorm.DB, secret string, redisClient *redis.Client)
 			return
 		}
 
+		// 从 Redis 缓存读取用户信息，避免每次查库
 		var user pkgdb.User
-		if err := db.First(&user, uint(userID)).Error; err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
-			return
+		cacheKey := fmt.Sprintf("auth:user:%d", uint(userID))
+		cached, err := redisClient.Get(ctx, cacheKey).Result()
+		if err == nil && cached != "" {
+			// 缓存命中
+			json.Unmarshal([]byte(cached), &user)
+		} else {
+			// 缓存未命中，查库
+			if err := db.First(&user, uint(userID)).Error; err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
+				return
+			}
+			// 写入缓存，TTL 5 分钟
+			if data, err := json.Marshal(user); err == nil {
+				redisClient.Set(ctx, cacheKey, string(data), 5*time.Minute)
+			}
 		}
 
 		c.Set("user", user)

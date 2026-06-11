@@ -1,0 +1,32 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: seckill-pdb
+  namespace: ticket-system
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: seckill
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: order-pdb
+  namespace: ticket-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: order
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ws-gateway-pdb
+  namespace: ticket-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ws-gateway

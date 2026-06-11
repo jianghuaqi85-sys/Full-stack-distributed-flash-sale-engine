@@ -19,6 +19,16 @@ const (
 	ShardCount = 16
 )
 
+// WsRouterInterface defines the interface for cross-instance WebSocket routing
+type WsRouterInterface interface {
+	RegisterConnection(userID string)
+	UnregisterConnection(userID string)
+	PublishToUser(userID string, message []byte) error
+	PublishToRoom(roomID string, message []byte) error
+	PublishBroadcast(message []byte) error
+	SubscribeToUser(userID string)
+}
+
 type Hub struct {
 	shards         []*shard
 	broadcast      chan *BroadcastMsg
@@ -28,6 +38,7 @@ type Hub struct {
 	jwtSecret      []byte
 	redisClient    *redis.Client
 	upgrader       *websocket.Upgrader
+	wsRouter       WsRouterInterface // Cross-instance router (nil for single-instance mode)
 	sync.RWMutex
 }
 
@@ -83,6 +94,13 @@ func NewHub(jwtSecret string, redisClient *redis.Client) *Hub {
 	return h
 }
 
+// SetWsRouter sets the cross-instance WebSocket router for distributed mode
+func (h *Hub) SetWsRouter(router WsRouterInterface) {
+	h.Lock()
+	defer h.Unlock()
+	h.wsRouter = router
+}
+
 func (h *Hub) SetAllowedOrigins(origins []string) {
 	h.Lock()
 	defer h.Unlock()
@@ -106,6 +124,16 @@ func (h *Hub) run() {
 				shard.roomIndex[client.roomID][client] = true
 			}
 			shard.Unlock()
+
+			// Register with cross-instance router
+			h.RLock()
+			router := h.wsRouter
+			h.RUnlock()
+			if router != nil {
+				router.RegisterConnection(client.userID)
+				router.SubscribeToUser(client.userID)
+			}
+
 		case client := <-h.unregister:
 			shard := h.getShard(client.userID)
 			shard.Lock()
@@ -122,6 +150,15 @@ func (h *Hub) run() {
 				close(client.send)
 			}
 			shard.Unlock()
+
+			// Unregister from cross-instance router
+			h.RLock()
+			router := h.wsRouter
+			h.RUnlock()
+			if router != nil {
+				router.UnregisterConnection(client.userID)
+			}
+
 		case msg := <-h.broadcast:
 			if msg.RoomID != "" {
 				h.broadcastToRoom(msg.RoomID, msg.Message)
@@ -208,13 +245,38 @@ func (h *Hub) getShard(userID string) *shard {
 	return h.shards[shardIndex]
 }
 
-func (h *Hub) ServeWS(c *gin.Context) {
-	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
+// WSContext is the interface for WebSocket connection contexts
+type WSContext interface {
+	Query(key string) string
+	Writer() http.ResponseWriter
+	Request() *http.Request
+}
+
+// ServeWS handles WebSocket upgrade requests. Accepts either *gin.Context or *ginContextAdapter.
+func (h *Hub) ServeWS(c interface{}) {
+	var w http.ResponseWriter
+	var r *http.Request
+	var queryFunc func(string) string
+
+	switch ctx := c.(type) {
+	case *gin.Context:
+		w = ctx.Writer
+		r = ctx.Request
+		queryFunc = ctx.Query
+	case WSContext:
+		w = ctx.Writer()
+		r = ctx.Request()
+		queryFunc = ctx.Query
+	default:
+		return
+	}
+
+	conn, err := h.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 
-	tokenString := c.Query("token")
+	tokenString := queryFunc("token")
 	if tokenString == "" {
 		conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.ClosePolicyViolation, "token required"))
@@ -261,7 +323,7 @@ func (h *Hub) ServeWS(c *gin.Context) {
 	}
 
 	userID := fmt.Sprintf("%d", uint(userIDFloat))
-	roomID := c.Query("room_id")
+	roomID := queryFunc("room_id")
 
 	client := &Client{
 		hub:    h,
@@ -370,8 +432,29 @@ type TicketResultPayload struct {
 	Timestamp  int64  `json:"timestamp"`
 }
 
-// SendToUser 向指定用户发送消息
+// SendToUser 向指定用户发送消息（支持跨实例推送）
 func (h *Hub) SendToUser(userID string, message []byte) {
+	// Try cross-instance delivery first
+	h.RLock()
+	router := h.wsRouter
+	h.RUnlock()
+
+	if router != nil {
+		// In distributed mode, publish to Redis PubSub
+		// The router will deliver to the correct instance
+		if err := router.PublishToUser(userID, message); err != nil {
+			// Fallback to local delivery on publish failure
+			h.sendToUserLocal(userID, message)
+		}
+		return
+	}
+
+	// Single-instance mode: deliver locally
+	h.sendToUserLocal(userID, message)
+}
+
+// sendToUserLocal delivers a message to local WebSocket connections for a user
+func (h *Hub) sendToUserLocal(userID string, message []byte) {
 	shard := h.getShard(userID)
 	shard.RLock()
 	defer shard.RUnlock()
@@ -386,12 +469,66 @@ func (h *Hub) SendToUser(userID string, message []byte) {
 	}
 }
 
-// BroadcastToRoom 向房间广播消息
+// BroadcastToRoom 向房间广播消息（支持跨实例）
 func (h *Hub) BroadcastToRoom(roomID string, message []byte) {
+	h.RLock()
+	router := h.wsRouter
+	h.RUnlock()
+
+	if router != nil {
+		if err := router.PublishToRoom(roomID, message); err != nil {
+			h.BroadcastToRoomLocal(roomID, message)
+		}
+		return
+	}
+
+	h.BroadcastToRoomLocal(roomID, message)
+}
+
+// BroadcastToRoomLocal broadcasts a message to a room on this instance only
+func (h *Hub) BroadcastToRoomLocal(roomID string, message []byte) {
 	h.broadcast <- &BroadcastMsg{
 		Message: message,
 		RoomID:  roomID,
 	}
+}
+
+// BroadcastToAllLocal broadcasts a message to all clients on this instance only
+func (h *Hub) BroadcastToAllLocal(message []byte) {
+	h.broadcast <- &BroadcastMsg{
+		Message: message,
+	}
+}
+
+// SendToUserLocal delivers a message to a user on this instance only (exposed for gateway)
+func (h *Hub) SendToUserLocal(userID string, message []byte) {
+	h.sendToUserLocal(userID, message)
+}
+
+// ServeHTTP adapts the Hub to serve as an http.Handler for the standalone gateway
+func (h *Hub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	c := &ginContextAdapter{w: w, r: r}
+	h.ServeWS(c)
+}
+
+// ginContextAdapter wraps http.ResponseWriter and *http.Request to implement WSContext
+type ginContextAdapter struct {
+	w http.ResponseWriter
+	r *http.Request
+}
+
+var _ WSContext = (*ginContextAdapter)(nil)
+
+func (a *ginContextAdapter) Query(key string) string {
+	return a.r.URL.Query().Get(key)
+}
+
+func (a *ginContextAdapter) Writer() http.ResponseWriter {
+	return a.w
+}
+
+func (a *ginContextAdapter) Request() *http.Request {
+	return a.r
 }
 
 var (

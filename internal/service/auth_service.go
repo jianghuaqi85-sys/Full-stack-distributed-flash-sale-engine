@@ -1,10 +1,12 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
 
 	"order-system/internal/pkg/db"
@@ -12,16 +14,18 @@ import (
 )
 
 type AuthService struct {
-	userRepo repository.UserRepository
-	jwtKey   []byte
-	expire   int
+	userRepo    repository.UserRepository
+	jwtKey      []byte
+	expire      int
+	redisClient *redis.Client
 }
 
-func NewAuthService(userRepo repository.UserRepository, jwtKey string, expire int) *AuthService {
+func NewAuthService(userRepo repository.UserRepository, jwtKey string, expire int, redisClient *redis.Client) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
-		jwtKey:   []byte(jwtKey),
-		expire:   expire,
+		userRepo:    userRepo,
+		jwtKey:      []byte(jwtKey),
+		expire:      expire,
+		redisClient: redisClient,
 	}
 }
 
@@ -88,4 +92,22 @@ func (s *AuthService) Login(username, password string) (*LoginOutput, error) {
 
 func (s *AuthService) GetProfile(userID uint) (*db.User, error) {
 	return s.userRepo.FindByID(userID)
+}
+
+func (s *AuthService) UpdateUserRole(userID uint, role string) error {
+	if role != "user" && role != "admin" {
+		return fmt.Errorf("invalid role: %s", role)
+	}
+
+	if err := s.userRepo.UpdateRole(userID, role); err != nil {
+		return fmt.Errorf("failed to update user role: %w", err)
+	}
+
+	// 主动清除用户缓存，确保下次请求获取最新角色
+	if s.redisClient != nil {
+		cacheKey := fmt.Sprintf("auth:user:%d", userID)
+		s.redisClient.Del(context.Background(), cacheKey)
+	}
+
+	return nil
 }

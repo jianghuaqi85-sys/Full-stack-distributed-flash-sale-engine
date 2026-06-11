@@ -2,105 +2,121 @@ package mq
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"order-system/internal/pkg/cache"
 	"order-system/internal/pkg/db"
+	appkafka "order-system/internal/pkg/kafka"
+	"order-system/internal/pkg/logger"
 	"order-system/internal/pkg/redis/pkgredis"
 	"order-system/internal/pkg/ws"
 	"order-system/internal/repository"
 )
 
+// TicketConsumer 票务消息消费者（Kafka）
 type TicketConsumer struct {
-	redis          *pkgredis.RedisClientWrapper
-	db             *gorm.DB
+	consumer       *appkafka.Consumer
 	ticketRepo     repository.TicketRepository
 	ticketTypeRepo repository.TicketTypeRepository
+	localCache     *cache.LocalCache
 	wsHub          *ws.Hub
-	name           string
+	redis          *pkgredis.RedisClientWrapper
 }
 
-func NewTicketConsumer(redis *pkgredis.RedisClientWrapper, database *gorm.DB, wsHub *ws.Hub) *TicketConsumer {
-	return &TicketConsumer{
-		redis:          redis,
-		db:             database,
+// NewTicketConsumer 创建 Kafka 票务消费者
+func NewTicketConsumer(
+	brokers []string,
+	database *gorm.DB,
+	wsHub *ws.Hub,
+	redis *pkgredis.RedisClientWrapper,
+	localCache *cache.LocalCache,
+) (*TicketConsumer, error) {
+	c := &TicketConsumer{
 		ticketRepo:     repository.NewTicketRepository(database),
 		ticketTypeRepo: repository.NewTicketTypeRepository(database),
+		localCache:     localCache,
 		wsHub:          wsHub,
-		name:           fmt.Sprintf("ticket-worker-%d", time.Now().UnixNano()),
+		redis:          redis,
 	}
-}
 
-func (c *TicketConsumer) Start(ctx context.Context) {
-	c.redis.XGroupCreate(ctx, TicketStreamKey, TicketConsumerGroup)
-
-	log.Printf("[MQ] Ticket consumer %s started", c.name)
-
-	for {
-		select {
-		case <-ctx.Done():
-			log.Printf("[MQ] Ticket consumer %s stopped", c.name)
-			return
-		default:
-			c.consume(ctx)
-		}
-	}
-}
-
-func (c *TicketConsumer) consume(ctx context.Context) {
-	streams, err := c.redis.XReadGroup(ctx, TicketConsumerGroup, c.name,
-		[]string{TicketStreamKey, ">"}, 10, 2*time.Second)
-
+	consumer, err := appkafka.NewConsumer(appkafka.ConsumerConfig{
+		Brokers:    brokers,
+		Topic:      TicketOrderTopic,
+		Group:      TicketOrderConsumerGroup,
+		Handler:    c.handleMessage,
+		MaxRetries: 3,
+		DLQTopic:   TicketOrderDLQTopic,
+	})
 	if err != nil {
-		return
+		return nil, fmt.Errorf("failed to create ticket consumer: %w", err)
 	}
 
-	for _, stream := range streams {
-		for _, msg := range stream.Messages {
-			c.processTicket(ctx, msg)
-			c.redis.XAck(ctx, TicketStreamKey, TicketConsumerGroup, msg.ID)
-		}
-	}
+	c.consumer = consumer
+	return c, nil
 }
 
-func (c *TicketConsumer) processTicket(ctx context.Context, msg redis.XMessage) {
-	data, ok := msg.Values["data"].(string)
-	if !ok {
-		log.Printf("[MQ] Invalid ticket message format: %v", msg.Values)
-		return
-	}
+// Start 启动消费者
+func (c *TicketConsumer) Start(ctx context.Context) {
+	c.consumer.Start(ctx)
+}
 
+// handleMessage 处理单条票务消息
+func (c *TicketConsumer) handleMessage(ctx context.Context, key, value []byte) error {
 	var ticketMsg TicketMessage
-	if err := json.Unmarshal([]byte(data), &ticketMsg); err != nil {
-		log.Printf("[MQ] Failed to unmarshal ticket message: %v", err)
-		return
+	if err := json.Unmarshal(value, &ticketMsg); err != nil {
+		logger.Error("[Kafka] Failed to unmarshal ticket message", "error", err)
+		return nil // 解析失败不重试，直接丢弃
 	}
 
-	log.Printf("[MQ] Processing ticket for user %d, event %d", ticketMsg.UserID, ticketMsg.EventID)
+	logger.Info("[Kafka] Processing ticket", "user_id", ticketMsg.UserID, "event_id", ticketMsg.EventID, "ticket_type_id", ticketMsg.TicketTypeID)
 
+	// 生成订单号（在幂等检查之前，确保同一消息总是生成相同的订单号）
+	orderNo := generateOrderNo()
+
+	// 幂等检查：使用订单号作为唯一键（基于消息内容的确定性生成）
+	// 订单号 = TK + Sonyflake ID，Sonyflake ID 基于时间戳+机器ID+序列号，同一消息重复消费时
+	// 由于消息内容相同，generateOrderNo() 会生成不同的订单号（因为时间不同），
+	// 所以我们使用消息内容哈希作为幂等 key，确保同一消息的幂等性
+	idempotentKey := fmt.Sprintf("mq:processed:%d:%d:%d:%d",
+		ticketMsg.UserID, ticketMsg.EventID, ticketMsg.TicketTypeID, ticketMsg.Timestamp)
+	set, err := c.redis.SetNX(ctx, idempotentKey, orderNo, 24*time.Hour)
+	if err != nil {
+		logger.Error("[Kafka] Idempotent check failed", "error", err)
+		return err // Redis 故障，重试
+	}
+	if !set {
+		// 检查是否是 DLQ 重试场景：如果 idempotent key 存在但值是旧的订单号格式
+		// 说明是之前失败的消息重试，需要检查之前的订单是否已创建
+		existingOrderNo, _ := c.redis.Client().Get(ctx, idempotentKey).Result()
+		logger.Info("[Kafka] Duplicate message detected", "user_id", ticketMsg.UserID, "event_id", ticketMsg.EventID, "existing_order_no", existingOrderNo)
+		return nil // 重复消息，跳过
+	}
+
+	// 查询票种信息
 	ticketType, err := c.ticketTypeRepo.FindByID(ticketMsg.TicketTypeID)
 	if err != nil || ticketType == nil {
-		log.Printf("[MQ] Ticket type %d not found", ticketMsg.TicketTypeID)
+		logger.Error("[Kafka] Ticket type not found", "ticket_type_id", ticketMsg.TicketTypeID)
 		c.sendResult(ticketMsg.UserID, 0, "failed", "票种不存在", "", "")
-		return
+		return nil // 数据问题不重试
 	}
 
 	// 原子扣减数据库库存
 	if err := c.ticketTypeRepo.AtomicDeductStock(ticketMsg.TicketTypeID, ticketMsg.Quantity); err != nil {
-		c.redis.SeckillRollback(ctx, fmt.Sprint(ticketMsg.EventID),
+		// 回滚 Redis 库存
+		activityID := fmt.Sprintf("ticket:%d", ticketMsg.EventID)
+		c.redis.SeckillRollback(ctx, activityID,
 			fmt.Sprint(ticketMsg.TicketTypeID), fmt.Sprint(ticketMsg.UserID))
+		// 删除幂等 key，允许重试
+		c.redis.Client().Del(ctx, idempotentKey)
 		c.sendResult(ticketMsg.UserID, 0, "failed", "库存不足", "", "")
-		return
+		return nil // 库存不足不重试
 	}
 
+	// 创建票务记录（使用预先生成的订单号）
 	ticket := &db.Ticket{
 		UserID:       ticketMsg.UserID,
 		EventID:      ticketMsg.EventID,
@@ -108,24 +124,34 @@ func (c *TicketConsumer) processTicket(ctx context.Context, msg redis.XMessage) 
 		Quantity:     ticketMsg.Quantity,
 		TotalPrice:   float64(ticketMsg.Quantity) * ticketType.Price,
 		Status:       "reserved",
-		OrderNo:      generateOrderNo(),
-		QRCode:       uuid.New().String(),
+		OrderNo:      orderNo,
 	}
 
 	if err := c.ticketRepo.Create(ticket); err != nil {
-		log.Printf("[MQ] Failed to create ticket: %v", err)
-		// 回滚已扣减的数据库库存
+		// 回滚数据库库存
 		c.ticketTypeRepo.UpdateStock(ticketMsg.TicketTypeID, ticketMsg.Quantity)
-		c.redis.SeckillRollback(ctx, fmt.Sprint(ticketMsg.EventID),
+		// 回滚 Redis 库存
+		activityID := fmt.Sprintf("ticket:%d", ticketMsg.EventID)
+		c.redis.SeckillRollback(ctx, activityID,
 			fmt.Sprint(ticketMsg.TicketTypeID), fmt.Sprint(ticketMsg.UserID))
+		// 删除幂等 key，允许重试
+		c.redis.Client().Del(ctx, idempotentKey)
 		c.sendResult(ticketMsg.UserID, 0, "failed", "创建票务失败", "", "")
-		return
+		return err // DB 故障，重试
+	}
+
+	// 更新本地缓存中的库存快照
+	if c.localCache != nil {
+		cacheKey := cache.StockCacheKey(ticketMsg.EventID, ticketMsg.TicketTypeID)
+		c.localCache.Delete(cacheKey)
 	}
 
 	c.sendResult(ticketMsg.UserID, ticket.ID, "success", "购票成功！", ticket.OrderNo, ticketType.Name)
-	log.Printf("[MQ] Ticket %d created successfully for user %d", ticket.ID, ticketMsg.UserID)
+	logger.Info("[Kafka] Ticket created successfully", "ticket_id", ticket.ID, "user_id", ticketMsg.UserID, "order_no", ticket.OrderNo)
+	return nil
 }
 
+// sendResult 通过 WebSocket 推送结果给用户
 func (c *TicketConsumer) sendResult(userID uint, ticketID uint, status, message, orderNo, ticketType string) {
 	result := ws.WSMessage{
 		Type: "ticket_result",
@@ -148,8 +174,12 @@ func (c *TicketConsumer) sendResult(userID uint, ticketID uint, status, message,
 	c.wsHub.SendToUser(fmt.Sprint(userID), data)
 }
 
+// generateOrderNo 生成订单号（使用 Sonyflake，降级为 rand）
 func generateOrderNo() string {
-	b := make([]byte, 4)
-	rand.Read(b)
-	return fmt.Sprintf("TK%s%s", time.Now().Format("20060102150405"), hex.EncodeToString(b))
+	// 优先使用 Sonyflake
+	if idgen := getIDGen(); idgen != nil {
+		return idgen.OrderNo()
+	}
+	// 降级方案
+	return generateFallbackOrderNo()
 }

@@ -5,7 +5,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"order-system/internal/pkg/db"
 	"order-system/internal/service"
 )
 
@@ -66,15 +65,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 }
 
 func (h *AuthHandler) GetProfile(c *gin.Context) {
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
-		return
-	}
-
-	userModel, ok := user.(db.User)
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "invalid user type"})
 		return
 	}
 
@@ -84,4 +76,23 @@ func (h *AuthHandler) GetProfile(c *gin.Context) {
 		"email":    userModel.Email,
 		"role":     userModel.Role,
 	})
+}
+
+func (h *AuthHandler) UpdateUserRole(c *gin.Context) {
+	var req struct {
+		UserID uint   `json:"user_id" binding:"required"`
+		Role   string `json:"role" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if err := h.authService.UpdateUserRole(req.UserID, req.Role); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "用户角色更新成功"})
 }

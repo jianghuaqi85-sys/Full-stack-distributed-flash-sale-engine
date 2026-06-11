@@ -17,24 +17,28 @@ services:
       - DB_PASSWORD=${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
       - DB_NAME=order_system
       - DB_SSLMODE=require
-      - DB_MAX_OPEN_CONNS=100
-      - DB_MAX_IDLE_CONNS=20
+      - DB_MAX_OPEN_CONNS=50
+      - DB_MAX_IDLE_CONNS=25
       - DB_CONN_MAX_LIFETIME=300
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - REDIS_DB=0
-      - JWT_SECRET=${JWT_SECRET:?请在 .env 中设置 JWT_SECRET}
+      - JWT_SECRET=${JWT_SECRET:?请在 . env 中设置 JWT_SECRET}
       - JWT_EXPIRE=${JWT_EXPIRE:-86400}
       - OTEL_EXPORTER_TYPE=otlp
       - OTEL_ENDPOINT=jaeger:4317
       - OTEL_SERVICE_NAME=order-system
+      - KAFKA_ENABLED=${KAFKA_ENABLED:-false}
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-kafka:9092}
     env_file:
       - .env
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     restart: unless-stopped
 
@@ -45,7 +49,7 @@ services:
       - POSTGRES_PASSWORD=${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}
       - POSTGRES_DB=order_system
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -58,7 +62,7 @@ services:
     image: redis:7-alpine
     command: redis-server ${REDIS_PASSWORD:+--requirepass ${REDIS_PASSWORD}}
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -66,6 +70,57 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+
+  # PgBouncer 连接池管理器
+  pgbouncer:
+    image: edoburu/pgbouncer:1.23.1
+    environment:
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:?请在 .env 中设置 DB_PASSWORD}@postgres:5432/order_system
+      - POOL_MODE=transaction
+      - MAX_CLIENT_CONN=200
+      - DEFAULT_POOL_SIZE=25
+      - MIN_POOL_SIZE=5
+      - RESERVE_POOL_SIZE=5
+      - SERVER_IDLE_TIMEOUT=60
+      - CLIENT_IDLE_TIMEOUT=0
+    ports:
+      - "6432:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Kafka (KRaft 模式，无需 ZooKeeper)
+  kafka:
+    image: bitnami/kafka:3.7
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      # KRaft 配置
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=controller,broker
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      # 监听器配置
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CFG_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+      # 性能配置
+      - KAFKA_CFG_NUM_PARTITIONS=12
+      - KAFKA_CFG_DEFAULT_REPLICATION_FACTOR=1
+      - KAFKA_CFG_LOG_RETENTION_HOURS=168
+      - KAFKA_CFG_LOG_SEGMENT_BYTES=1073741824
+      - KAFKA_CFG_MESSAGE_MAX_BYTES=10485760
+    volumes:
+      - kafka_data:/bitnami/kafka
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
 
   jaeger:
     image: jaegertracing/all-in-one:1.53
@@ -78,3 +133,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  kafka_data:

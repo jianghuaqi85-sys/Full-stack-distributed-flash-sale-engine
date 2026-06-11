@@ -1,14 +1,25 @@
-import { useState } from 'react'
-import { Layout, Menu, Button, theme, Space, Tag, Avatar } from 'antd'
-import { DashboardOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, CalendarOutlined, TagOutlined, UserOutlined, SettingOutlined, BarChartOutlined, ShopOutlined, SwapOutlined, AuditOutlined, PercentageOutlined } from '@ant-design/icons'
+import { useState, useEffect, useCallback } from 'react'
 import { Outlet, useNavigate, useLocation } from 'react-router-dom'
+import { Avatar, Tooltip } from 'antd'
+import {
+  DashboardOutlined,
+  CalendarOutlined,
+  ShopOutlined,
+  TagOutlined,
+  SwapOutlined,
+  UserOutlined,
+  BarChartOutlined,
+  SettingOutlined,
+  AuditOutlined,
+  PercentageOutlined,
+  LogoutOutlined,
+  SearchOutlined,
+  SunOutlined,
+  MoonOutlined,
+} from '@ant-design/icons'
 import { useAuthStore } from '../stores/authStore'
 import NotificationBell from './NotificationBell'
-import ThemeToggle from './ThemeToggle'
-import BrandLogo from './BrandLogo'
-import PageTransition from './PageTransition'
-
-const { Header, Sider, Content } = Layout
+import CommandPalette from './CommandPalette'
 
 interface Props {
   isDark: boolean
@@ -16,26 +27,27 @@ interface Props {
 }
 
 export default function AppLayout({ isDark, onThemeToggle }: Props) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+  const [showPalette, setShowPalette] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
-  const { token: { colorBgContainer, borderRadiusLG } } = theme.useToken()
 
   const isAdmin = user?.role === 'admin'
 
-  const menuItems = [
+  const navItems = [
     { key: '/', icon: <DashboardOutlined />, label: '仪表盘' },
-    { key: '/events', icon: <CalendarOutlined />, label: '活动中心' },
-    { key: '/marketplace', icon: <ShopOutlined />, label: '二手市场' },
-    { key: '/tickets', icon: <TagOutlined />, label: '我的票务' },
-    { key: '/transfer-records', icon: <SwapOutlined />, label: '转让记录' },
-    { key: '/profile', icon: <UserOutlined />, label: '个人中心' },
+    { key: '/events', icon: <CalendarOutlined />, label: '活动' },
+    { key: '/marketplace', icon: <ShopOutlined />, label: '市场' },
+    { key: '/tickets', icon: <TagOutlined />, label: '票务' },
+    { key: '/transfer-records', icon: <SwapOutlined />, label: '转让' },
+    { key: '/profile', icon: <UserOutlined />, label: '个人' },
     ...(isAdmin ? [
-      { key: '/admin/dashboard', icon: <BarChartOutlined />, label: '数据仪表盘' },
-      { key: '/admin/events', icon: <SettingOutlined />, label: '活动管理' },
-      { key: '/admin/transfers', icon: <AuditOutlined />, label: '转让审核' },
-      { key: '/admin/promo', icon: <PercentageOutlined />, label: '促销码管理' },
+      { key: 'divider', icon: null, label: '' },
+      { key: '/admin/dashboard', icon: <BarChartOutlined />, label: '数据' },
+      { key: '/admin/events', icon: <SettingOutlined />, label: '管理' },
+      { key: '/admin/transfers', icon: <AuditOutlined />, label: '审核' },
+      { key: '/admin/promo', icon: <PercentageOutlined />, label: '促销' },
     ] : []),
   ]
 
@@ -44,79 +56,238 @@ export default function AppLayout({ isDark, onThemeToggle }: Props) {
     navigate('/login')
   }
 
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault()
+      setShowPalette(prev => !prev)
+    }
+    if (e.key === 'Escape') {
+      setShowPalette(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
+
   return (
-    <Layout style={{ minHeight: '100vh' }}>
-      <Sider
-        trigger={null}
-        collapsible
-        collapsed={collapsed}
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--color-bg-base)' }}>
+      {/* Sidebar */}
+      <nav
+        onMouseEnter={() => setExpanded(true)}
+        onMouseLeave={() => setExpanded(false)}
         style={{
-          background: 'linear-gradient(180deg, #151025 0%, #0D0A1A 100%)',
-          borderRight: '1px solid var(--color-border)',
+          width: expanded ? 240 : 64,
+          transition: 'width 0.2s ease',
+          background: '#0A0A0A',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          zIndex: 100,
+          overflow: 'hidden',
+          borderRight: '1px solid #1A1A1A',
         }}
       >
+        {/* Brand */}
         <div style={{
           height: 64,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
-          padding: collapsed ? 0 : '0 20px',
-          gap: 10,
-          borderBottom: '1px solid rgba(139, 111, 255, 0.15)',
+          padding: expanded ? '0 20px' : '0 0',
+          justifyContent: expanded ? 'flex-start' : 'center',
+          borderBottom: '1px solid #1A1A1A',
+          flexShrink: 0,
         }}>
-          <BrandLogo size={32} collapsed={collapsed} />
-          {!collapsed && (
-            <span style={{ color: '#F0EDFC', fontWeight: 700, fontSize: 16, whiteSpace: 'nowrap' }}>
-              票务系统
-            </span>
-          )}
+          <span style={{
+            fontFamily: 'var(--font-mono)',
+            fontSize: expanded ? 18 : 14,
+            fontWeight: 700,
+            color: '#FFFFFF',
+            letterSpacing: '-0.04em',
+            whiteSpace: 'nowrap',
+          }}>
+            {expanded ? 'TICKET' : 'T'}
+          </span>
         </div>
-        <Menu
-          theme="dark"
-          mode="inline"
-          selectedKeys={[location.pathname]}
-          items={menuItems}
-          onClick={({ key }) => navigate(key)}
-          style={{ background: 'transparent', borderRight: 0 }}
-        />
-      </Sider>
-      <Layout>
-        <Header style={{
-          padding: '0 24px',
-          background: colorBgContainer,
+
+        {/* Navigation */}
+        <div style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
+          {navItems.map(item => {
+            if (item.key === 'divider') {
+              return <div key="divider" style={{ height: 1, background: '#1A1A1A', margin: '8px 16px' }} />
+            }
+            const isActive = location.pathname === item.key
+            return (
+              <Tooltip key={item.key} title={expanded ? '' : item.label} placement="right">
+                <button
+                  onClick={() => navigate(item.key)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: expanded ? '0 20px' : '0 0',
+                    justifyContent: expanded ? 'flex-start' : 'center',
+                    height: 40,
+                    border: 'none',
+                    background: isActive ? 'rgba(255,255,255,0.1)' : 'transparent',
+                    color: isActive ? '#FFFFFF' : '#666666',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s',
+                    fontSize: 14,
+                    fontFamily: 'var(--font-body)',
+                    borderRadius: expanded ? 4 : 0,
+                    margin: expanded ? '2px 8px' : 0,
+                  }}
+                  onMouseEnter={e => {
+                    if (!isActive) e.currentTarget.style.color = '#999999'
+                  }}
+                  onMouseLeave={e => {
+                    if (!isActive) e.currentTarget.style.color = '#666666'
+                  }}
+                >
+                  <span style={{ fontSize: 18, lineHeight: 1 }}>{item.icon}</span>
+                  {expanded && <span style={{ whiteSpace: 'nowrap' }}>{item.label}</span>}
+                </button>
+              </Tooltip>
+            )
+          })}
+        </div>
+
+        {/* Bottom actions */}
+        <div style={{
+          padding: expanded ? '12px 16px' : '12px 0',
+          borderTop: '1px solid #1A1A1A',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          borderBottom: '1px solid var(--color-border-light)',
-          position: 'relative',
+          flexDirection: 'column',
+          gap: 4,
+          alignItems: expanded ? 'stretch' : 'center',
+          flexShrink: 0,
         }}>
+          {/* Search trigger */}
+          <Tooltip title={expanded ? '' : '搜索'} placement="right">
+            <button
+              onClick={() => setShowPalette(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: expanded ? '8px 12px' : '8px',
+                justifyContent: expanded ? 'flex-start' : 'center',
+                border: '1px solid #262626',
+                background: 'transparent',
+                color: '#666666',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontFamily: 'var(--font-body)',
+                borderRadius: 4,
+                marginBottom: 8,
+              }}
+            >
+              <SearchOutlined style={{ fontSize: 14 }} />
+              {expanded && (
+                <>
+                  <span style={{ flex: 1, textAlign: 'left' }}>搜索</span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: '#444' }}>⌘K</span>
+                </>
+              )}
+            </button>
+          </Tooltip>
+
+          {/* Theme toggle */}
+          <Tooltip title={expanded ? '' : (isDark ? '浅色模式' : '深色模式')} placement="right">
+            <button
+              onClick={onThemeToggle}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                padding: expanded ? '8px 12px' : '8px',
+                justifyContent: expanded ? 'flex-start' : 'center',
+                border: 'none',
+                background: 'transparent',
+                color: '#666666',
+                cursor: 'pointer',
+                fontSize: 14,
+                borderRadius: 4,
+              }}
+            >
+              {isDark ? <SunOutlined /> : <MoonOutlined />}
+              {expanded && <span>{isDark ? '浅色' : '深色'}</span>}
+            </button>
+          </Tooltip>
+
+          {/* Notifications */}
           <div style={{
-            position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 2,
-            background: 'linear-gradient(90deg, var(--color-primary), transparent)',
-            opacity: 0.3,
-          }} />
-          <Button type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={() => setCollapsed(!collapsed)} />
-          <Space>
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: expanded ? 'flex-start' : 'center',
+            padding: expanded ? '0 12px' : 0,
+          }}>
             <NotificationBell />
-            <ThemeToggle isDark={isDark} onToggle={onThemeToggle} />
-            <Avatar size={28} style={{ background: 'linear-gradient(135deg, #5B2FE8, #D4A843)' }}>
+          </div>
+
+          {/* User */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '8px 0',
+            justifyContent: expanded ? 'flex-start' : 'center',
+            marginTop: 4,
+          }}>
+            <Avatar size={28} style={{ background: '#0066FF', fontSize: 12, flexShrink: 0 }}>
               {user?.username?.[0]?.toUpperCase()}
             </Avatar>
-            <span style={{ fontWeight: 500 }}>{user?.username}</span>
-            {isAdmin && <Tag color="gold" style={{ borderRadius: 8 }}>管理员</Tag>}
-            <Button type="text" icon={<LogoutOutlined />} onClick={handleLogout}>退出</Button>
-          </Space>
-        </Header>
-        <Content style={{ margin: 24, padding: 24, background: colorBgContainer, borderRadius: borderRadiusLG, minHeight: 280 }}>
-          <PageTransition>
-            <Outlet />
-          </PageTransition>
-        </Content>
-      </Layout>
-    </Layout>
+            {expanded && (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ color: '#F5F5F5', fontSize: 13, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.username}
+                </div>
+                <div style={{ color: '#666', fontSize: 11 }}>{isAdmin ? '管理员' : '用户'}</div>
+              </div>
+            )}
+            {expanded && (
+              <button
+                onClick={handleLogout}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#666',
+                  cursor: 'pointer',
+                  padding: 4,
+                  fontSize: 14,
+                }}
+              >
+                <LogoutOutlined />
+              </button>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* Main content */}
+      <main style={{
+        flex: 1,
+        marginLeft: 64,
+        minHeight: '100vh',
+        transition: 'margin-left 0.2s ease',
+      }}>
+        <div style={{
+          maxWidth: 1200,
+          margin: '0 auto',
+          padding: '32px 32px',
+        }}>
+          <Outlet />
+        </div>
+      </main>
+
+      {/* Command palette */}
+      {showPalette && <CommandPalette onClose={() => setShowPalette(false)} />}
+    </div>
   )
 }

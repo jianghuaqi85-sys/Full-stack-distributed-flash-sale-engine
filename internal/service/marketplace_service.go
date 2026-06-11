@@ -3,28 +3,36 @@ package service
 import (
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"order-system/internal/pkg/db"
 	"order-system/internal/repository"
 )
 
 type MarketplaceService struct {
+	db            *gorm.DB
 	listingRepo   repository.MarketplaceRepository
 	ticketRepo    repository.TicketRepository
 	ticketTypeRepo repository.TicketTypeRepository
 	userRepo      repository.UserRepository
+	eventRepo     repository.EventRepository
 }
 
 func NewMarketplaceService(
+	db *gorm.DB,
 	listingRepo repository.MarketplaceRepository,
 	ticketRepo repository.TicketRepository,
 	ticketTypeRepo repository.TicketTypeRepository,
 	userRepo repository.UserRepository,
+	eventRepo repository.EventRepository,
 ) *MarketplaceService {
 	return &MarketplaceService{
+		db:            db,
 		listingRepo:   listingRepo,
 		ticketRepo:    ticketRepo,
 		ticketTypeRepo: ticketTypeRepo,
 		userRepo:      userRepo,
+		eventRepo:     eventRepo,
 	}
 }
 
@@ -88,41 +96,55 @@ func (s *MarketplaceService) CreateListing(userID uint, input CreateListingInput
 }
 
 func (s *MarketplaceService) BuyListing(buyerID, listingID uint) error {
-	listing, err := s.listingRepo.FindByID(listingID)
-	if err != nil || listing == nil {
-		return fmt.Errorf("商品不存在")
-	}
+	// 使用事务 + SELECT FOR UPDATE 防止并发购买同一张票
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		// 行锁查询，防止并发竞态
+		var listing db.MarketplaceListing
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", listingID).First(&listing).Error; err != nil {
+			return fmt.Errorf("商品不存在")
+		}
 
-	if listing.Status != "active" {
-		return fmt.Errorf("该商品已下架或已售出")
-	}
+		if listing.Status != "active" {
+			return fmt.Errorf("该商品已下架或已售出")
+		}
 
-	if listing.SellerID == buyerID {
-		return fmt.Errorf("不能购买自己的票")
-	}
+		if listing.SellerID == buyerID {
+			return fmt.Errorf("不能购买自己的票")
+		}
 
-	ticket, err := s.ticketRepo.FindByID(listing.TicketID)
-	if err != nil || ticket == nil {
-		return fmt.Errorf("票务不存在")
-	}
+		// 行锁查询票务
+		var ticket db.Ticket
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("id = ?", listing.TicketID).First(&ticket).Error; err != nil {
+			return fmt.Errorf("票务不存在")
+		}
 
-	if ticket.UserID != listing.SellerID {
-		return fmt.Errorf("票务信息不一致")
-	}
+		if ticket.UserID != listing.SellerID {
+			return fmt.Errorf("票务信息不一致")
+		}
 
-	// 转移票务所有权
-	if err := s.ticketRepo.UpdateOwner(ticket.ID, buyerID); err != nil {
-		return fmt.Errorf("转移票务失败: %w", err)
-	}
+		// 转移票务所有权
+		if err := tx.Model(&db.Ticket{}).Where("id = ?", ticket.ID).
+			Updates(map[string]interface{}{
+				"user_id":         buyerID,
+				"transfer_status": "approved",
+				"transferred_to":  buyerID,
+			}).Error; err != nil {
+			return fmt.Errorf("转移票务失败: %w", err)
+		}
 
-	// 更新市场记录
-	listing.Status = "sold"
-	listing.BuyerID = buyerID
-	if err := s.listingRepo.Update(listing); err != nil {
-		return fmt.Errorf("更新市场记录失败: %w", err)
-	}
+		// 更新市场记录
+		if err := tx.Model(&db.MarketplaceListing{}).Where("id = ?", listing.ID).
+			Updates(map[string]interface{}{
+				"status":   "sold",
+				"buyer_id": buyerID,
+			}).Error; err != nil {
+			return fmt.Errorf("更新市场记录失败: %w", err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 func (s *MarketplaceService) CancelListing(userID, listingID uint) error {
@@ -160,12 +182,26 @@ func (s *MarketplaceService) GetListing(id uint) (*ListingOutput, error) {
 		ticketName = tt.Name
 	}
 
+	// 加载活动标题
+	eventTitle := ""
+	if event, err := s.eventRepo.FindByID(ticket.EventID); err == nil && event != nil {
+		eventTitle = event.Title
+	}
+
+	// 加载卖家名称
+	sellerName := ""
+	if seller, err := s.userRepo.FindByID(listing.SellerID); err == nil && seller != nil {
+		sellerName = seller.Username
+	}
+
 	return &ListingOutput{
 		ID:          listing.ID,
 		TicketID:    listing.TicketID,
 		EventID:     ticket.EventID,
 		TicketName:  ticketName,
+		EventTitle:  eventTitle,
 		SellerID:    listing.SellerID,
+		SellerName:  sellerName,
 		Price:       listing.Price,
 		Status:      listing.Status,
 		BuyerID:     listing.BuyerID,
@@ -206,22 +242,36 @@ func (s *MarketplaceService) ListByEvent(eventID uint, page, limit int) ([]Listi
 	return s.buildListingOutputs(listings), total, nil
 }
 
-func (s *MarketplaceService) ListMyListings(userID uint) ([]ListingOutput, error) {
-	listings, err := s.listingRepo.FindBySellerID(userID)
-	if err != nil {
-		return nil, err
+func (s *MarketplaceService) ListMyListings(userID uint, page, limit int) ([]ListingOutput, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
 	}
 
-	return s.buildListingOutputs(listings), nil
+	listings, total, err := s.listingRepo.FindBySellerIDPaginated(userID, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return s.buildListingOutputs(listings), total, nil
 }
 
-func (s *MarketplaceService) ListMyPurchases(userID uint) ([]ListingOutput, error) {
-	listings, err := s.listingRepo.FindByBuyerID(userID)
-	if err != nil {
-		return nil, err
+func (s *MarketplaceService) ListMyPurchases(userID uint, page, limit int) ([]ListingOutput, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 20
 	}
 
-	return s.buildListingOutputs(listings), nil
+	listings, total, err := s.listingRepo.FindByBuyerIDPaginated(userID, page, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return s.buildListingOutputs(listings), total, nil
 }
 
 // buildListingOutputs 批量加载关联数据，避免 N+1 查询
@@ -264,6 +314,40 @@ func (s *MarketplaceService) buildListingOutputs(listings []db.MarketplaceListin
 		ttMap[tt.ID] = tt.Name
 	}
 
+	// 收集所有 event ID，批量查询
+	eventIDs := make([]uint, 0)
+	eventSeen := make(map[uint]bool)
+	for _, t := range ticketMap {
+		if !eventSeen[t.EventID] {
+			eventIDs = append(eventIDs, t.EventID)
+			eventSeen[t.EventID] = true
+		}
+	}
+
+	eventMap := make(map[uint]string)
+	for _, eid := range eventIDs {
+		if event, err := s.eventRepo.FindByID(eid); err == nil && event != nil {
+			eventMap[eid] = event.Title
+		}
+	}
+
+	// 收集所有 seller ID，批量查询
+	sellerIDs := make([]uint, 0)
+	sellerSeen := make(map[uint]bool)
+	for _, l := range listings {
+		if !sellerSeen[l.SellerID] {
+			sellerIDs = append(sellerIDs, l.SellerID)
+			sellerSeen[l.SellerID] = true
+		}
+	}
+
+	sellerMap := make(map[uint]string)
+	for _, sid := range sellerIDs {
+		if user, err := s.userRepo.FindByID(sid); err == nil && user != nil {
+			sellerMap[sid] = user.Username
+		}
+	}
+
 	output := make([]ListingOutput, 0, len(listings))
 	for _, listing := range listings {
 		ticket, ok := ticketMap[listing.TicketID]
@@ -276,7 +360,9 @@ func (s *MarketplaceService) buildListingOutputs(listings []db.MarketplaceListin
 			TicketID:    listing.TicketID,
 			EventID:     ticket.EventID,
 			TicketName:  ttMap[ticket.TicketTypeID],
+			EventTitle:  eventMap[ticket.EventID],
 			SellerID:    listing.SellerID,
+			SellerName:  sellerMap[listing.SellerID],
 			Price:       listing.Price,
 			Status:      listing.Status,
 			BuyerID:     listing.BuyerID,

@@ -143,18 +143,7 @@ func (h *EventHandler) GetEvent(c *gin.Context) {
 }
 
 func (h *EventHandler) ListEvents(c *gin.Context) {
-	pageStr := c.DefaultQuery("page", "1")
-	limitStr := c.DefaultQuery("limit", "20")
-
-	page, err := strconv.Atoi(pageStr)
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	limit, err := strconv.Atoi(limitStr)
-	if err != nil || limit < 1 {
-		limit = 20
-	}
+	page, limit := parsePageLimit(c, 1, 20, 100)
 
 	events, total, err := h.eventService.ListEvents(page, limit)
 	if err != nil {

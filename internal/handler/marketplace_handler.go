@@ -153,13 +153,20 @@ func (h *MarketplaceHandler) ListMyListings(c *gin.Context) {
 		return
 	}
 
-	listings, err := h.marketplaceService.ListMyListings(userModel.ID)
+	page, limit := parsePageLimit(c, 1, 20, 100)
+
+	listings, total, err := h.marketplaceService.ListMyListings(userModel.ID, page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": listings})
+	c.JSON(http.StatusOK, gin.H{
+		"data":  listings,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
 }
 
 func (h *MarketplaceHandler) ListMyPurchases(c *gin.Context) {
@@ -168,11 +175,18 @@ func (h *MarketplaceHandler) ListMyPurchases(c *gin.Context) {
 		return
 	}
 
-	listings, err := h.marketplaceService.ListMyPurchases(userModel.ID)
+	page, limit := parsePageLimit(c, 1, 20, 100)
+
+	listings, total, err := h.marketplaceService.ListMyPurchases(userModel.ID, page, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"data": listings})
+	c.JSON(http.StatusOK, gin.H{
+		"data":  listings,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
 }

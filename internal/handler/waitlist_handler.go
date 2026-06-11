@@ -25,14 +25,8 @@ func (h *WaitlistHandler) JoinWaitlist(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
-		return
-	}
-	userModel, ok := user.(struct{ ID uint })
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user type"})
 		return
 	}
 
@@ -59,14 +53,8 @@ func (h *WaitlistHandler) GetWaitlistPosition(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
-		return
-	}
-	userModel, ok := user.(struct{ ID uint })
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user type"})
 		return
 	}
 
@@ -92,14 +80,8 @@ func (h *WaitlistHandler) LeaveWaitlist(c *gin.Context) {
 		return
 	}
 
-	user, exists := c.Get("user")
-	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
-		return
-	}
-	userModel, ok := user.(struct{ ID uint })
+	userModel, ok := getUser(c)
 	if !ok {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid user type"})
 		return
 	}
 

@@ -14,6 +14,8 @@ type MarketplaceRepository interface {
 	FindActiveListings(page, limit int) ([]db.MarketplaceListing, int64, error)
 	FindBySellerID(userID uint) ([]db.MarketplaceListing, error)
 	FindByBuyerID(userID uint) ([]db.MarketplaceListing, error)
+	FindBySellerIDPaginated(userID uint, page, limit int) ([]db.MarketplaceListing, int64, error)
+	FindByBuyerIDPaginated(userID uint, page, limit int) ([]db.MarketplaceListing, int64, error)
 	Update(listing *db.MarketplaceListing) error
 }
 
@@ -101,4 +103,38 @@ func (r *marketplaceRepository) FindByBuyerID(userID uint) ([]db.MarketplaceList
 
 func (r *marketplaceRepository) Update(listing *db.MarketplaceListing) error {
 	return r.db.Save(listing).Error
+}
+
+func (r *marketplaceRepository) FindBySellerIDPaginated(userID uint, page, limit int) ([]db.MarketplaceListing, int64, error) {
+	var listings []db.MarketplaceListing
+	var total int64
+
+	query := r.db.Model(&db.MarketplaceListing{}).Where("seller_id = ?", userID)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	if err := query.Offset(offset).Limit(limit).Order("created_at DESC").Find(&listings).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return listings, total, nil
+}
+
+func (r *marketplaceRepository) FindByBuyerIDPaginated(userID uint, page, limit int) ([]db.MarketplaceListing, int64, error) {
+	var listings []db.MarketplaceListing
+	var total int64
+
+	query := r.db.Model(&db.MarketplaceListing{}).Where("buyer_id = ?", userID)
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	offset := (page - 1) * limit
+	if err := query.Offset(offset).Limit(limit).Order("created_at DESC").Find(&listings).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return listings, total, nil
 }

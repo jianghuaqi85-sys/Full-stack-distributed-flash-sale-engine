@@ -62,11 +62,12 @@ var seckillRollbackScript = redis.NewScript(`
 `)
 
 // SeckillDeduct 秒杀库存预扣（原子操作）
+// 使用 hash tag {activityID} 确保 stock 和 bought key 路由到同一 slot（Redis Cluster 兼容）
 func (r *RedisClientWrapper) SeckillDeduct(ctx context.Context, activityID, productID, userID string) (int64, error) {
 	result, err := seckillDeductScript.Run(ctx, r.client,
 		[]string{
-			"seckill:stock:" + activityID,
-			"seckill:bought:" + activityID,
+			"seckill:{" + activityID + "}:stock",
+			"seckill:{" + activityID + "}:bought",
 		},
 		productID, userID,
 	).Int64()
@@ -77,8 +78,8 @@ func (r *RedisClientWrapper) SeckillDeduct(ctx context.Context, activityID, prod
 func (r *RedisClientWrapper) SeckillRollback(ctx context.Context, activityID, productID, userID string) error {
 	_, err := seckillRollbackScript.Run(ctx, r.client,
 		[]string{
-			"seckill:stock:" + activityID,
-			"seckill:bought:" + activityID,
+			"seckill:{" + activityID + "}:stock",
+			"seckill:{" + activityID + "}:bought",
 		},
 		productID, userID,
 	).Result()
@@ -87,13 +88,13 @@ func (r *RedisClientWrapper) SeckillRollback(ctx context.Context, activityID, pr
 
 // InitSeckillStock 初始化秒杀库存
 func (r *RedisClientWrapper) InitSeckillStock(ctx context.Context, activityID, productID string, stock int) error {
-	key := "seckill:stock:" + activityID
+	key := "seckill:{" + activityID + "}:stock"
 	return r.client.HSet(ctx, key, productID, stock).Err()
 }
 
 // GetSeckillStock 获取秒杀库存
 func (r *RedisClientWrapper) GetSeckillStock(ctx context.Context, activityID, productID string) (int, error) {
-	key := "seckill:stock:" + activityID
+	key := "seckill:{" + activityID + "}:stock"
 	stock, err := r.client.HGet(ctx, key, productID).Int()
 	if err == redis.Nil {
 		return 0, nil
@@ -103,13 +104,17 @@ func (r *RedisClientWrapper) GetSeckillStock(ctx context.Context, activityID, pr
 
 // SetSeckillActivity 设置秒杀活动信息
 func (r *RedisClientWrapper) SetSeckillActivity(ctx context.Context, activityID string, info map[string]interface{}) error {
-	key := "seckill:info:" + activityID
+	key := "seckill:{" + activityID + "}:info"
 	return r.client.HSet(ctx, key, info).Err()
 }
 
 // GetSeckillActivity 获取秒杀活动信息
+func (r *RedisClientWrapper) SetNX(ctx context.Context, key string, value interface{}, expiration time.Duration) (bool, error) {
+	return r.client.SetNX(ctx, key, value, expiration).Result()
+}
+
 func (r *RedisClientWrapper) GetSeckillActivity(ctx context.Context, activityID string) (map[string]string, error) {
-	key := "seckill:info:" + activityID
+	key := "seckill:{" + activityID + "}:info"
 	return r.client.HGetAll(ctx, key).Result()
 }
 

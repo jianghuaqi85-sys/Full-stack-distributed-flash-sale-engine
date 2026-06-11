@@ -1,6 +1,69 @@
-# 分布式票务抢购系统
+# 分布式票务抢购系统 (Cloud-Native Microservices Edition)
 
 ## 项目文档
+
+---
+
+## 系统效果展示 📸
+
+以下为本系统的部分核心前端界面与功能展示。通过精心设计的 UI 与微交互，我们为用户提供了极致的操作体验，同时为管理员提供了强大的数据洞察能力。
+
+> **提示**：为呈现最佳的响应式布局效果，所有截图均取自系统高分辨率运行环境。
+
+### 1. 系统门户与活动大厅
+
+通过动态沉浸式设计，用户可以快速定位并抢购心仪的活动票务。
+![活动大厅](./images/1.png)
+
+### 2. 用户授权与身份认证
+
+基于 JWT 和黑名单校验的身份验证模块，界面清爽，反馈迅速。
+![用户登录注册](./images/2.png)
+
+### 3. 用户主页与票务资产
+
+集中管理个人的所有票务、活动订单与动态。
+![用户主页](./images/3.png)
+
+### 4. 活动详情页与多场次选择
+
+清晰展示活动详情、各类票种库存，支持多场次无缝切换，点击即可抢票。
+![活动详情](./images/4.png)
+
+### 5. 秒杀排队与等候大厅
+
+在流量峰值时，系统自动将超出处理能力的请求推入等待队列，保障核心链路稳定。
+![排队等待](./images/5.png)
+
+### 6. 我的票务与电子检票
+
+购票成功后生成专属防伪二维码，支持现场核销与状态追踪。
+![电子票务](./images/6.png)
+
+### 7. 票务转让与审核体系
+
+解决临时行程冲突，官方支持安全、合规的票务转赠与申请系统。
+![票务转让](./images/7.png)
+
+### 8. 二手交易大厅
+
+用户自由流通手中闲置票务，系统作担保，彻底斩断黄牛黑色产业链。
+![二手市场](./images/8.png)
+
+### 9. 数据大盘与可视化分析
+
+管理员独享的全局经营看板，漏斗图、趋势图一览无遗，用数据驱动业务增长。
+![数据大盘](./images/9.png)
+
+### 10. 管理员控制台与活动发布
+
+强大的后台管理功能，支持丰富的促销码规则与库存实时分配策略。
+![后台管理](./images/10.png)
+
+### 11. 系统细节与微交互呈现
+
+从骨架屏加载到暗黑模式的无缝切换，处处体现企业级项目的打磨标准。
+![更多细节](./images/11.png)
 
 ---
 
@@ -8,1018 +71,317 @@
 
 - [一、项目概述](#一项目概述)
 - [二、技术栈](#二技术栈)
-- [三、项目结构](#三项目结构)
-- [四、系统架构](#四系统架构)
-- [五、数据库设计](#五数据库设计)
-- [六、后端详细设计](#六后端详细设计)
-- [七、前端详细设计](#七前端详细设计)
-- [八、API 接口文档](#八api-接口文档)
-- [九、核心业务流程](#九核心业务流程)
-- [十、安全机制](#十安全机制)
-- [十一、性能优化](#十一性能优化)
-- [十二、部署方案](#十二部署方案)
-- [十三、开发指南](#十三开发指南)
-- [十四、功能清单](#十四功能清单)
+- [三、核心架构设计](#三核心架构设计)
+- [四、项目目录结构](#四项目目录结构)
+- [五、微服务与核心业务流转](#五微服务与核心业务流转)
+- [六、分布式基础设施](#六分布式基础设施)
+- [七、可观测性与监控](#七可观测性与监控)
+- [八、云原生部署指南 (K8s)](#八云原生部署指南-k8s)
+- [九、本地开发与快速启动](#九本地开发与快速启动)
+- [十、功能清单与演进路线](#十功能清单与演进路线)
 
 ---
 
 ## 一、项目概述
 
-本项目是一个**高并发分布式票务抢购系统**，采用前后端分离架构（Go + React），基于 Redis Stream 消息队列实现异步出票，支持活动管理、秒杀抢票、票务转让、二手市场等完整业务链路。
+本项目是一个**高并发分布式票务抢购系统**，采用前后端分离架构（Go + React）。经历了全面的**云原生微服务架构（Microservices）升级**，系统已从初期的单体架构重构为包含 API 网关、订单、秒杀、后台管理、长连接推送等多个微服务组件的大型分布式系统。
 
-### 核心特性
+### 🌟 微服务架构核心亮点
 
-- **秒杀抢票**：Redis Lua 脚本原子扣减库存，支持万级并发
-- **异步出票**：Redis Stream 消息队列异步处理订单，削峰填谷
-- **实时通知**：WebSocket 16 分片 Hub，毫秒级推送抢票结果
-- **虚拟排队**：高并发时自动进入排队等待页面
-- **二手市场**：官方认证的票务转让交易平台
-- **多场次管理**：一个活动支持多个时间场次，独立库存
-- **数据仪表盘**：管理员实时销售数据、转化漏斗、趋势分析
+1. **分布式微服务解耦 (Microservices Split)**
+   
+   - 业务逻辑全面拆分为 `API 网关`、`Order`、`Seckill`、`Admin` 和 `WS Gateway` 独立微服务，支持各模块按需进行独立水平扩容。
+
+2. **企业级消息总线 (Kafka Event-Driven)**
+   
+   - 引入 **Kafka** 替代轻量级队列，承担海量订单秒杀后的异步削峰填谷，彻底解耦“扣减库存”与“创建订单”的强依赖链路。
+
+3. **极速秒杀引擎 (High-Performance Seckill)**
+   
+   - 基于 **Redis Lua 脚本**实现毫秒级原子扣减库存，彻底解决高并发下的超卖问题。单节点支撑万级并发，依托 Kafka 削峰，保障系统在流量洪峰下的极致高可用。
+
+4. **分布式基础设施套件 (Distributed Infrastructure)**
+   
+   - **分布式 ID 生成器 (Snowflake)**：在多微服务环境下保证订单号全局唯一且有序。
+   - **多级缓存 (Multi-Level Cache)**：缓解数据库瞬时并发读压力，进一步提升吞吐。
+
+5. **全栈可观测性体系 (Full-Stack Observability)**
+   
+   - 全面集成 **Prometheus + Grafana** 监控指标与报警。
+   - 集成 **OpenTelemetry + Jaeger** 追踪微服务间的跨服务请求链路，慢查询与系统瓶颈一览无遗。
+
+6. **云原生容器编排 (Cloud-Native K8s)**
+   
+   - 提供全套 Kubernetes (K8s) 部署清单 (Deployments, Services, ConfigMaps, Ingress)，可一键部署至生产级集群。
 
 ---
 
 ## 二、技术栈
 
-### 后端
+### 后端与微服务
 
-| 技术                           | 版本       | 用途       |
-| ---------------------------- | -------- | -------- |
-| Go                           | 1.24+    | 主语言      |
-| Gin                          | v1.12.0  | HTTP 框架  |
-| GORM                         | v1.25.10 | ORM      |
-| PostgreSQL                   | 15       | 关系数据库    |
-| Redis                        | 7        | 缓存/队列/限流 |
-| WebSocket (gorilla)          | v1.5.3   | 实时通信     |
-| JWT (golang-jwt)             | v5.2.1   | 认证       |
-| OpenTelemetry                | v1.43.0  | 链路追踪     |
-| bcrypt (golang.org/x/crypto) | v0.49.0  | 密码加密     |
+| 技术/组件                       | 版本      | 用途            |
+| --------------------------- | ------- | ------------- |
+| **Go**                      | 1.24+   | 微服务开发主语言      |
+| **Gin**                     | v1.12.0 | HTTP 微服务框架    |
+| **Kafka (confluent-kafka)** | 3.x     | 分布式消息队列，削峰解耦  |
+| **Redis**                   | 7       | 缓存、Lua 扣减、限流  |
+| **PostgreSQL**              | 15      | 持久化关系型数据库     |
+| **WebSocket (gorilla)**     | v1.5.3  | 实时推送，状态下发     |
+| **Snowflake**               | -       | 分布式全局唯一 ID 生成 |
+| **JWT**                     | v5.2.1  | 网关与微服务无状态认证   |
+
+### 可观测性与运维 (DevOps & Observability)
+
+| 技术/组件                      | 用途                     |
+| -------------------------- | ---------------------- |
+| **Kubernetes (K8s)**       | 容器编排、服务发现、负载均衡         |
+| **Docker Compose**         | 本地快速联合调试编排             |
+| **Prometheus**             | 采集 QPS、接口延时等性能 Metrics |
+| **Grafana**                | 性能监控与业务大盘可视化           |
+| **Jaeger + OpenTelemetry** | 微服务分布式请求链路追踪           |
+| **GitHub Actions**         | 自动化 CI/CD 测试与打包        |
 
 ### 前端
 
-| 技术                 | 版本     | 用途       |
-| ------------------ | ------ | -------- |
-| React              | 18.2.0 | UI 框架    |
-| TypeScript         | 5.3.3  | 类型系统     |
-| Vite               | 5.1.0  | 构建工具     |
-| Ant Design         | 5.15.0 | UI 组件库   |
-| @ant-design/charts | 2.6.7  | 数据可视化    |
-| Zustand            | 4.5.0  | 状态管理     |
-| React Router       | 6.22.0 | 路由       |
-| Axios              | 1.6.7  | HTTP 客户端 |
-
-### 基础设施
-
-| 技术                      | 用途      |
-| ----------------------- | ------- |
-| Docker + Docker Compose | 容器化部署   |
-| Jaeger                  | 链路追踪 UI |
-| GitHub Actions          | CI/CD   |
+| 技术                 | 版本         | 用途         |
+| ------------------ | ---------- | ---------- |
+| React 18 + Vite    | 18.2 / 5.1 | 现代化前端工程化底座 |
+| TypeScript         | 5.3.3      | 类型安全保障     |
+| Ant Design 5.x     | 5.15.0     | 企业级 UI 组件库 |
+| Zustand            | 4.5.0      | 轻量级高性能状态管理 |
+| @ant-design/charts | 2.6.7      | 数据看板可视化组件  |
 
 ---
 
-## 三、项目结构
+## 三、核心架构设计
 
-```
-├── cmd/api/main.go                  # 后端入口
-├── internal/
-│   ├── config/config.go             # 配置管理
-│   ├── handler/                     # HTTP Handler 层 (12 个)
-│   │   ├── auth_handler.go          # 认证
-│   │   ├── event_handler.go         # 活动管理
-│   │   ├── ticket_handler.go        # 票务购买
-│   │   ├── ticket_transfer_handler.go # 票务转让
-│   │   ├── show_handler.go          # 场次管理
-│   │   ├── marketplace_handler.go   # 二手市场
-│   │   ├── queue_handler.go         # 排队系统
-│   │   ├── waitlist_handler.go      # 等候名单
-│   │   ├── promo_code_handler.go    # 促销码
-│   │   ├── stats_handler.go         # 数据统计
-│   │   ├── health_handler.go        # 健康检查
-│   │   └── helpers.go               # 公共工具函数
-│   ├── service/                     # 业务逻辑层 (10 个)
-│   ├── repository/                  # 数据访问层 (8 个)
-│   ├── middleware/                   # 中间件 (5 个)
-│   ├── mq/                          # Redis Stream 消息队列
-│   ├── queue/                       # 排队/等候名单管理
-│   ├── router/router.go             # 路由注册
-│   └── pkg/
-│       ├── db/db.go                 # 数据库模型+迁移
-│       ├── redis/                   # Redis 客户端
-│       ├── ws/ws.go                 # WebSocket Hub
-│       ├── otel/otel.go             # OpenTelemetry
-│       ├── logger/logger.go         # 结构化日志
-│       ├── errors/errors.go         # 统一错误类型
-│       └── constants/               # 常量定义
-├── proto/                           # Proto 定义 (预留，当前未使用)
-├── web/                             # React 前端
-│   └── src/
-│       ├── App.tsx                  # 路由+主题配置
-│       ├── api/                     # API 调用层 (12 个)
-│       ├── pages/                   # 页面组件 (13 个)
-│       ├── components/              # 通用组件 (15 个)
-│       ├── stores/                  # Zustand 状态管理
-│       ├── theme/                   # 主题配置
-│       ├── styles/                  # CSS 变量+全局样式
-│       └── types/index.ts           # TypeScript 类型
-├── .github/workflows/ci.yml        # CI/CD
-├── docker-compose.yml               # Docker 编排
-├── Dockerfile                       # 多阶段构建
-├── start.bat                        # Windows 一键启动
-└── .env                             # 环境配置
+### 3.1 微服务系统架构图
+
+```text
+                                    ┌────────────────────────┐
+                                    │     React Frontend     │
+                                    └───────────┬────────────┘
+                                                │ (HTTPS / WSS)
+                                    ┌───────────▼────────────┐
+                                    │    API Gateway & BFF   │
+                                    │ (Rate Limiting, Auth)  │
+                                    └─┬─────────┬──────────┬─┘
+                                      │         │          │
+           ┌──────────────────────────┘         │          └──────────────────────────┐
+           ▼                                    ▼                                     ▼
+┌─────────────────────┐               ┌─────────────────────┐               ┌─────────────────────┐
+│    Seckill Svc      │               │     Order Svc       │               │     Admin Svc       │
+│ (Lua 极速扣减库存)  │               │ (订单生命周期管理)  │               │ (报表、活动全生命管理)│
+└─────────┬───────────┘               └─────────┬───────────┘               └─────────┬───────────┘
+          │                                     │                                     │
+          ▼                                     │                                     │
+┌─────────────────────┐                         │                                     │
+│   Kafka Msg Queue   │◄────────────────────────┘                                     │
+│ (Topic: orders_new) │                                                               │
+└─────────┬───────────┘                                                               │
+          │                                                                           │
+          ▼                                     ▼                                     ▼
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                   PostgreSQL 15 (Master/Slave)                              │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                ▲
+                                                │
+                                    ┌───────────┴────────────┐
+                                    │     WS Gateway Svc     │
+                                    │ (WebSocket 抢票结果下发)│
+                                    └────────────────────────┘
 ```
 
 ---
 
-## 四、系统架构
+## 四、项目目录结构
 
-### 架构图
+重构后的目录结构遵循 Go 标准项目布局（Standard Go Project Layout），专为多应用微服务设计：
 
-```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   React UI  │────▶│  Gin HTTP   │────▶│ PostgreSQL  │
-│  (Vite Dev) │     │   Server    │     │    15       │
-└─────────────┘     │   :8080     │     └─────────────┘
-                    └──────┬──────┘
-                           │
-              ┌────────────┼────────────┐
-              │            │            │
-        ┌─────▼─────┐ ┌───▼───┐ ┌─────▼─────┐
-        │   Redis   │ │  WS   │ │  Jaeger   │
-        │    7      │ │ Hub   │ │  :16686   │
-        │ (缓存/队列)│ │:8080  │ │ (追踪UI)  │
-        └───────────┘ └───────┘ └───────────┘
-```
-
-### 后端分层架构
-
-```
-HTTP Request
-    │
-    ▼
-┌──────────────────────────┐
-│     Middleware Layer      │  CORS → JWT → RateLimit → RoleAuth
-└──────────┬───────────────┘
-           ▼
-┌──────────────────────────┐
-│      Handler Layer       │  参数绑定、响应格式化
-└──────────┬───────────────┘
-           ▼
-┌──────────────────────────┐
-│      Service Layer       │  业务逻辑、事务编排
-└──────────┬───────────────┘
-           ▼
-┌──────────────────────────┐
-│    Repository Layer      │  数据访问、SQL 查询
-└──────────┬───────────────┘
-           ▼
-┌──────────────────────────┐
-│      GORM + PostgreSQL   │  ORM 映射、数据持久化
-└──────────────────────────┘
-```
-
-### 秒杀架构
-
-```
-用户请求 → SeckillRateLimit (10次/秒/用户)
-         → SeckillDeduct (Redis Lua 原子扣减)
-         → 成功 → Redis Stream (异步消息)
-         → TicketConsumer → 创建 Ticket + 扣减 DB 库存
-         → WebSocket 推送结果给用户
+```text
+├── cmd/                             # 微服务程序入口
+│   ├── admin/main.go                # 后台管理服务入口
+│   ├── api/main.go                  # API Gateway / BFF 入口
+│   ├── order/main.go                # 订单业务服务入口
+│   ├── seckill/main.go              # 秒杀业务服务入口
+│   └── ws-gateway/main.go           # WebSocket 实时推送网关
+├── internal/                        # 内部业务逻辑代码
+│   ├── config/                      # 统一配置加载
+│   ├── gateway/                     # 网关路由与负载逻辑
+│   ├── handler/                     # 各微服务的 HTTP Handlers
+│   ├── middleware/                  # 全局中间件（限流、鉴权、日志、Metrics）
+│   ├── mq/                          # 消息队列消费者与生产者封装
+│   ├── pkg/                         # 内部可复用的基础工具包
+│   │   ├── cache/                   # 多级缓存实现
+│   │   ├── db/                      # PostgreSQL 连接池初始化
+│   │   ├── idgen/                   # 雪花算法全局 ID 生成器
+│   │   ├── kafka/                   # Kafka Client 封装
+│   │   ├── redis/                   # Redis Client 与 Lua 脚本管理
+│   │   ├── otel/                    # 分布式链路追踪探针
+│   ├── repository/                  # 数据库 DAO 数据访问层
+│   └── service/                     # 领域业务服务核心逻辑
+├── k8s/                             # Kubernetes 容器编排部署文件
+│   ├── admin-deployment.yaml
+│   ├── order-deployment.yaml
+│   ├── seckill-deployment.yaml
+│   ├── ws-gateway-deployment.yaml
+│   ├── configmap.yaml
+│   ├── ingress.yaml                 # 集群统一外部访问入口
+│   └── poddisruptionbudget.yaml
+├── migrations/                      # 数据库 SQL 迁移文件
+├── monitoring/                      # 可观测性套件配置 (Prometheus, Grafana)
+├── web/                             # React 现代化前端工程
+├── docker-compose.yml               # 本地一键启动联合调试文件
+└── .github/workflows/               # 自动化构建测试 CI 管道
 ```
 
 ---
 
-## 五、数据库设计
+## 五、微服务与核心业务流转
 
-### 5.1 ER 关系图
+### 5.1 微服务职能划分
 
-```
-User ──< Ticket ──> Event ──< TicketType
-  │        │                      │
-  │        ├──> Show              │
-  │        │                      │
-  │        └──> TicketTransfer    │
-  │                               │
-  └──> MarketplaceListing ──> Ticket
-                               │
-Event ──< PromoCode
-```
+- **API 网关 (cmd/api)**：系统的统一入口。负责 IP 限流、路由分发、JWT Token 校验与解析、跨域处理，并合并部分微服务请求响应（BFF 模式）。
+- **秒杀服务 (cmd/seckill)**：专为千万级高并发设计。只做两件事：Redis Lua 脚本原子扣减库存，以及生成带有全局唯一雪花 ID 的订单消息发往 Kafka。
+- **订单服务 (cmd/order)**：系统的事务核心。消费 Kafka 消息，执行数据库层面的真实扣减（解决防超卖最终一致性），生成真实订单记录，处理支付与过期订单的定时补偿回收。
+- **管理服务 (cmd/admin)**：内部管理端。负责创建活动、分配票种库存、审核二手转让，以及通过聚合查询提供数据大盘能力。
+- **WebSocket 网关 (cmd/ws-gateway)**：与用户建立长连接。订单服务异步落库成功后，通过内部机制通知 WS 网关，主动将“抢票成功”的喜悦瞬间推送到前端。
 
-### 5.2 数据模型
+### 5.2 全链路异步秒杀流程
 
-#### User（用户表）
-
-| 字段       | 类型     | 约束               | 说明              |
-| -------- | ------ | ---------------- | --------------- |
-| ID       | uint   | PK, 自增           | 用户 ID           |
-| Username | string | UNIQUE, NOT NULL | 用户名             |
-| Password | string | NOT NULL         | bcrypt 加密密码     |
-| Email    | string | UNIQUE, NOT NULL | 邮箱              |
-| Role     | string | DEFAULT 'user'   | 角色 (user/admin) |
-
-#### Event（活动表）
-
-| 字段          | 类型        | 约束                     | 说明       |
-| ----------- | --------- | ---------------------- | -------- |
-| ID          | uint      | PK                     | 活动 ID    |
-| Title       | string    | NOT NULL               | 活动标题     |
-| Description | text      |                        | 活动描述     |
-| Location    | string    | NOT NULL               | 活动地点     |
-| CoverImage  | string    |                        | 封面图片 URL |
-| StartTime   | time.Time | NOT NULL, INDEX        | 开始时间     |
-| EndTime     | time.Time | NOT NULL, INDEX        | 结束时间     |
-| Status      | string    | DEFAULT 'draft', INDEX | 状态       |
-| TotalStock  | int       | DEFAULT 0              | 总库存      |
-
-**状态机**: draft → on_sale → off_sale / ended
-
-#### TicketType（票种表）
-
-| 字段         | 类型      | 约束                  | 说明    |
-| ---------- | ------- | ------------------- | ----- |
-| ID         | uint    | PK                  | 票种 ID |
-| EventID    | uint    | NOT NULL, INDEX     | 关联活动  |
-| Name       | string  | NOT NULL            | 票种名称  |
-| Price      | float64 | NOT NULL            | 价格    |
-| Stock      | int     | NOT NULL, DEFAULT 0 | 库存    |
-| MaxPerUser | int     | NOT NULL, DEFAULT 1 | 每人限购  |
-| SortOrder  | int     | DEFAULT 0           | 排序    |
-
-#### Ticket（票务/订单表）
-
-| 字段             | 类型      | 约束                                  | 说明     |
-| -------------- | ------- | ----------------------------------- | ------ |
-| ID             | uint    | PK                                  | 票务 ID  |
-| UserID         | uint    | NOT NULL, INDEX                     | 购票用户   |
-| EventID        | uint    | NOT NULL, INDEX                     | 关联活动   |
-| ShowID         | uint    | INDEX                               | 关联场次   |
-| TicketTypeID   | uint    | NOT NULL, INDEX                     | 关联票种   |
-| OrderNo        | string  | UNIQUE INDEX                        | 订单号    |
-| Quantity       | int     | NOT NULL, DEFAULT 1                 | 数量     |
-| TotalPrice     | float64 |                                     | 总价     |
-| Status         | string  | NOT NULL, DEFAULT 'reserved', INDEX | 状态     |
-| QRCode         | text    |                                     | 电子票二维码 |
-| DiscountCode   | string  | INDEX                               | 优惠码    |
-| RealName       | string  | INDEX                               | 实名姓名   |
-| IDCard         | string  | INDEX                               | 身份证号   |
-| Phone          | string  | INDEX                               | 手机号    |
-| TransferredTo  | uint    | INDEX                               | 转让目标用户 |
-| TransferStatus | string  | DEFAULT 'none'                      | 转让状态   |
-
-**状态机**: reserved → paid → used / expired / cancelled
-
-#### Show（场次表）
-
-| 字段        | 类型        | 约束                     | 说明    |
-| --------- | --------- | ---------------------- | ----- |
-| ID        | uint      | PK                     | 场次 ID |
-| EventID   | uint      | NOT NULL, INDEX        | 关联活动  |
-| Name      | string    | NOT NULL               | 场次名称  |
-| ShowTime  | time.Time | NOT NULL, INDEX        | 开始时间  |
-| EndTime   | time.Time | NOT NULL               | 结束时间  |
-| Status    | string    | DEFAULT 'draft', INDEX | 状态    |
-| Stock     | int       | NOT NULL, DEFAULT 0    | 库存    |
-| SoldCount | int       | DEFAULT 0              | 已售数量  |
-| SortOrder | int       | DEFAULT 0              | 排序    |
-
-#### TicketTransfer（票务转让表）
-
-| 字段           | 类型         | 约束                                 | 说明                    |
-| ------------ | ---------- | ---------------------------------- | --------------------- |
-| ID           | uint       | PK                                 | 转让 ID                 |
-| TicketID     | uint       | NOT NULL, INDEX                    | 关联票务                  |
-| FromUserID   | uint       | NOT NULL, INDEX                    | 转让方                   |
-| ToUserID     | uint       | NOT NULL, INDEX                    | 接收方                   |
-| Status       | string     | NOT NULL, DEFAULT 'pending', INDEX | 状态                    |
-| TransferType | string     | NOT NULL, DEFAULT 'gift', INDEX    | 类型 (gift/marketplace) |
-| Price        | float64    |                                    | 交易价格                  |
-| Reason       | string     |                                    | 转让原因                  |
-| ReviewedBy   | uint       |                                    | 审核人                   |
-| ReviewedAt   | *time.Time |                                    | 审核时间                  |
-
-#### MarketplaceListing（二手市场表）
-
-| 字段          | 类型      | 约束                                | 说明    |
-| ----------- | ------- | --------------------------------- | ----- |
-| ID          | uint    | PK                                | 上架 ID |
-| TicketID    | uint    | NOT NULL, INDEX                   | 关联票务  |
-| SellerID    | uint    | NOT NULL, INDEX                   | 卖家    |
-| Price       | float64 | NOT NULL                          | 出售价格  |
-| Status      | string  | NOT NULL, DEFAULT 'active', INDEX | 状态    |
-| BuyerID     | uint    |                                   | 买家    |
-| Description | text    |                                   | 商品描述  |
-
-#### PromoCode（促销码表）
-
-| 字段            | 类型        | 约束           | 说明                 |
-| ------------- | --------- | ------------ | ------------------ |
-| ID            | uint      | PK           | 促销码 ID             |
-| Code          | string    | UNIQUE INDEX | 促销码                |
-| EventID       | uint      | INDEX        | 关联活动               |
-| DiscountType  | string    | NOT NULL     | 类型 (percent/fixed) |
-| DiscountValue | float64   | NOT NULL     | 折扣值                |
-| MinAmount     | float64   | DEFAULT 0    | 最低消费               |
-| MaxUses       | int       | DEFAULT 0    | 最大使用次数 (0=无限)      |
-| UsedCount     | int       | DEFAULT 0    | 已使用次数              |
-| StartTime     | time.Time |              | 生效时间               |
-| EndTime       | time.Time |              | 过期时间               |
-| IsActive      | bool      | DEFAULT true | 是否启用               |
-
-### 5.3 复合索引
-
-```sql
-CREATE INDEX idx_tickets_user_status ON tickets(user_id, status);
-CREATE INDEX idx_tickets_event_status ON tickets(event_id, status);
-CREATE INDEX idx_tickets_status_created ON tickets(status, created_at);
-CREATE INDEX idx_marketplace_status_created ON marketplace_listings(status, created_at);
-```
+1. **流量拦截**：API 网关接收用户抢票请求，触发 `SeckillRateLimitMiddleware` (用户级限流) 与 IP 限频。
+2. **极速校验**：请求路由至 **Seckill 服务**，在 Redis 内存中进行黑白名单及库存校验。
+3. **Lua 原子扣减**：执行 Redis Lua 脚本，原子化地实现“查库存 -> 查重复购买记录 -> 扣减库存 -> 记录购买用户”。
+4. **分布式 ID 与投递**：为该请求通过 `idgen` 分配全局唯一的 Snowflake Order ID，将完整的下单事件（User, Event, TicketType, OrderID）投递至 **Kafka** 队列 (`topic: orders_create`)，立即给前端返回“正在排队出票中”。
+5. **异步消费落库**：**Order 服务**以批量消费模式订阅 Kafka。在内部通过 GORM 执行事务，持久化 Ticket 订单，并扣减 PostgreSQL 数据库中的真实可用库存。
+6. **实时触达**：订单落库成功，Order 服务通过内网 RPC 或发布/订阅机制通知 **WS 网关**，网关根据连接池精确定位用户 Channel，主动下发成功消息，前端展示抢票成功！
 
 ---
 
-## 六、后端详细设计
+## 六、分布式基础设施
 
-### 6.1 Handler 层
+### 6.1 雪花算法分布式 ID (Snowflake)
 
-| Handler               | 文件                         | 方法                                                                                                                                                          |
-| --------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| AuthHandler           | auth_handler.go            | Register, Login, GetProfile                                                                                                                                 |
-| EventHandler          | event_handler.go           | CreateEvent, UpdateEvent, GetEvent, ListEvents, PublishEvent, UnpublishEvent, EndEvent, CreateTicketType, UpdateTicketType, DeleteTicketType, GetEventStock |
-| TicketHandler         | ticket_handler.go          | PurchaseTicket, GetMyTickets, GetTicketDetail, PayTicket, CancelTicket, UseTicket                                                                           |
-| ShowHandler           | show_handler.go            | CreateShow, UpdateShow, DeleteShow, PublishShow, UnpublishShow, ListShows, GetShow                                                                          |
-| MarketplaceHandler    | marketplace_handler.go     | CreateListing, BuyListing, CancelListing, GetListing, ListActive, ListByEvent, ListMyListings, ListMyPurchases                                              |
-| TicketTransferHandler | ticket_transfer_handler.go | RequestTransfer, DirectGift, GetTransferHistory, ApproveTransfer, RejectTransfer, GetPendingTransfers                                                       |
-| QueueHandler          | queue_handler.go           | JoinQueue, GetPosition, LeaveQueue                                                                                                                          |
-| WaitlistHandler       | waitlist_handler.go        | JoinWaitlist, GetWaitlistPosition, LeaveWaitlist                                                                                                            |
-| PromoCodeHandler      | promo_code_handler.go      | CreatePromoCode, ValidatePromoCode, GetPromoCodes, DeletePromoCode                                                                                          |
-| StatsHandler          | stats_handler.go           | GetDashboardStats, GetSalesTrend, GetTicketTypeStats, GetConversionFunnel                                                                                   |
-| HealthHandler         | health_handler.go          | HealthCheck                                                                                                                                                 |
+在微服务架构下，自增主键无法满足全局业务诉求。系统引入了 Snowflake ID 生成器 (`internal/pkg/idgen`)，保证：
 
-### 6.2 Service 层
+- 全局唯一性，无惧分库分表。
+- 趋势递增，最大程度保证 B+ 树索引插入效率。
+- 高性能生成，仅涉及内存位运算，无任何网络损耗。
 
-| Service               | 文件                         | 核心职责                             |
-| --------------------- | -------------------------- | -------------------------------- |
-| AuthService           | auth_service.go            | 注册(bcrypt)、登录(JWT HS256)、获取用户信息  |
-| EventService          | event_service.go           | 活动 CRUD、票种管理、发布时初始化 Redis 库存     |
-| TicketService         | ticket_service.go          | 秒杀购票(Redis Lua 扣减 + MQ)、支付、取消、使用 |
-| ShowService           | show_service.go            | 场次 CRUD、库存管理                     |
-| MarketplaceService    | marketplace_service.go     | 上架、购买(所有权转移)、下架、列表查询             |
-| TicketTransferService | ticket_transfer_service.go | 转让申请、直接转赠、审核、历史记录                |
-| PromoCodeService      | promo_code_service.go      | 促销码创建、验证、折扣计算                    |
-| StatsService          | stats_service.go           | 仪表盘统计、销售趋势、票种分布、转化漏斗             |
-| TicketExpireChecker   | ticket_expire_service.go   | 定时检查过期票务，自动回收库存                  |
+### 6.2 Redis Lua 与缓存防击穿
 
-### 6.3 Repository 层
-
-所有 Repository 遵循接口/实现模式，通过构造函数注入依赖：
-
-```go
-type TicketRepository interface {
-    Create(ticket *db.Ticket) error
-    FindByID(id uint) (*db.Ticket, error)
-    FindByUserID(userID uint, page, limit int) ([]db.Ticket, int64, error)
-    FindExpiredReserved(olderThan time.Time, limit int) ([]db.Ticket, error)
-    UpdateStatus(id uint, status string) error
-    UpdateOwner(id uint, newUserID uint) error
-    // ...
-}
-```
-
-### 6.4 中间件
-
-| 中间件                        | 文件                   | 功能                          |
-| -------------------------- | -------------------- | --------------------------- |
-| JWTAuthWithBlacklist       | auth.go              | JWT 验证 + Redis 黑名单检查        |
-| RoleAuth                   | auth.go              | 角色鉴权 (admin)                |
-| RateLimitMiddleware        | ratelimit.go         | IP 级限流 (100次/分钟, Redis Lua) |
-| SeckillRateLimitMiddleware | seckill_ratelimit.go | 用户级秒杀限流 (10次/秒)             |
-| ErrorHandler               | error_handler.go     | 统一错误处理                      |
-| RecoveryMiddleware         | otel.go              | Panic 恢复 + OTEL 追踪          |
-
-### 6.5 消息队列 (Redis Streams)
-
-```go
-// 生产者
-type TicketProducer struct {
-    redis *pkgredis.RedisClientWrapper
-}
-
-func (p *TicketProducer) PublishTicket(ctx context.Context, msg TicketMessage) error {
-    // 发布到 Redis Stream "ticket:orders"
-}
-
-// 消费者
-type TicketConsumer struct {
-    redis   *pkgredis.RedisClientWrapper
-    db      *gorm.DB
-    wsHub   *ws.Hub
-}
-
-func (c *TicketConsumer) processTicket(ctx context.Context, msg redis.XMessage) {
-    // 1. 查询票种信息
-    // 2. 原子扣减数据库库存 (AtomicDeductStock)
-    // 3. 创建 Ticket 记录
-    // 4. WebSocket 推送结果
-}
-```
-
-### 6.6 WebSocket Hub
-
-16 分片 Hub，按 user ID 哈希分配：
-
-```go
-type Hub struct {
-    shards         []*shard          // 16 个分片
-    broadcast      chan *BroadcastMsg
-    jwtSecret      []byte
-    redisClient    *redis.Client     // 用于黑名单检查
-    allowedOrigins map[string]bool
-}
-```
-
-支持功能：
-
-- JWT 认证 (query param)
-- Redis 黑名单检查
-- 房间广播 (room-based)
-- 按用户推送 (SendToUser)
-- Ping/Pong 保活 (60s)
-
-### 6.7 Redis Lua 脚本
-
-#### 秒杀扣减 (SeckillDeduct)
-
-```lua
--- 原子操作：检查库存 → 检查重复购买 → 扣减库存 → 记录用户
-local stock = tonumber(redis.call('HGET', KEYS[1], ARGV[1]))
-if stock <= 0 then return -1 end       -- 售罄
-if redis.call('SISMEMBER', KEYS[2], ARGV[2]) == 1 then return -2 end  -- 重复
-redis.call('HINCRBY', KEYS[1], ARGV[1], -1)
-redis.call('SADD', KEYS[2], ARGV[2])
-return 1
-```
-
-#### 限流 (RateLimit)
-
-```lua
--- 原子操作：检查计数 → 递增 → 设置过期
-local current = tonumber(redis.call('GET', KEYS[1]) or '0')
-if current >= limit then return 0 end
-current = redis.call('INCR', KEYS[1])
-if current == 1 then redis.call('EXPIRE', KEYS[1], window) end
-return current <= limit and 1 or 0
-```
+- 针对活动详情等热点读取数据，采用 `internal/pkg/cache` 包装的多级缓存（本地内存 LRU + Redis），避免缓存雪崩。
+- 库存扣减全面交由 Redis Lua 代理，规避了高并发下事务隔离级别导致的死锁与性能瓶颈。
 
 ---
 
-## 七、前端详细设计
+## 七、可观测性与监控
 
-### 7.1 路由配置
+新架构不再是黑盒运行，我们在 `monitoring/` 和 `internal/middleware/` 实现了企业级可观测三剑客：
 
-| 路径                  | 组件              | 权限      | 说明    |
-| ------------------- | --------------- | ------- | ----- |
-| `/login`            | Login           | 公开      | 登录页   |
-| `/register`         | Register        | 公开      | 注册页   |
-| `/`                 | Dashboard       | 需登录     | 用户仪表盘 |
-| `/events`           | Events          | 需登录     | 活动列表  |
-| `/events/:id`       | EventDetail     | 需登录     | 活动详情  |
-| `/marketplace`      | Marketplace     | 需登录     | 二手市场  |
-| `/tickets`          | Tickets         | 需登录     | 我的票务  |
-| `/transfer-records` | TransferRecords | 需登录     | 转让记录  |
-| `/profile`          | Profile         | 需登录     | 个人中心  |
-| `/admin/dashboard`  | AdminDashboard  | 需 admin | 管理仪表盘 |
-| `/admin/events`     | AdminEvents     | 需 admin | 活动管理  |
-
-### 7.2 组件清单
-
-| 组件                 | 文件                     | 说明                     |
-| ------------------ | ---------------------- | ---------------------- |
-| AppLayout          | AppLayout.tsx          | 全局布局 (侧边栏+Header)      |
-| BrandLogo          | BrandLogo.tsx          | SVG 品牌 Logo            |
-| SkeletonCard       | SkeletonCard.tsx       | 骨架屏加载 (card/list/stat) |
-| PageTransition     | PageTransition.tsx     | 页面进入动画                 |
-| Countdown          | Countdown.tsx          | 倒计时组件                  |
-| ThemeToggle        | ThemeToggle.tsx        | 亮色/暗色切换                |
-| NotificationBell   | NotificationBell.tsx   | 通知铃铛                   |
-| ProtectedRoute     | ProtectedRoute.tsx     | 路由守卫                   |
-| ErrorBoundary      | ErrorBoundary.tsx      | 全局错误边界                 |
-| RouteErrorBoundary | RouteErrorBoundary.tsx | 路由级错误边界                |
-| TransferButton     | TransferButton.tsx     | 转让按钮 (转赠/申请)           |
-| ShareButton        | ShareButton.tsx        | 分享按钮                   |
-| PromoCodeInput     | PromoCodeInput.tsx     | 促销码输入                  |
-| QueueWaiting       | QueueWaiting.tsx       | 排队等待展示                 |
-| WaitlistButton     | WaitlistButton.tsx     | 等候名单按钮                 |
-
-### 7.3 状态管理 (Zustand)
-
-#### authStore
-
-```typescript
-interface AuthState {
-  token: string | null
-  user: User | null
-  isAuthenticated: boolean
-  loading: boolean
-  login: (username: string, password: string) => Promise<void>
-  register: (username: string, password: string, email: string) => Promise<void>
-  logout: () => void
-  fetchProfile: () => Promise<void>
-}
-```
-
-#### notificationStore
-
-```typescript
-interface NotificationState {
-  notifications: Notification[]
-  unreadCount: number
-  addNotification: (n: Notification) => void
-  markAsRead: (id: string) => void
-  markAllAsRead: () => void
-  clearAll: () => void
-}
-```
-
-### 7.4 主题系统
-
-双层主题架构：
-
-1. **CSS 变量** (`src/styles/variables.css`)：自定义元素的亮色/暗色适配
-2. **Ant Design Token** (`src/theme/index.ts`)：组件级主题配置
-
-品牌色系：
-
-- 主色：`#5B2FE8` (深紫) / 暗色 `#8B6FFF`
-- 金色：`#D4A843` / 暗色 `#E6BC5C`
-- 成功：`#22C55E`
-- 警告：`#F59E0B`
-- 错误：`#EF4444`
-
-活动封面渐变系统 (8 种)：
-
-```typescript
-const eventGradients = [
-  'linear-gradient(135deg, #5B2FE8 0%, #8B6FFF 100%)',   // 紫色
-  'linear-gradient(135deg, #D4A843 0%, #F5C862 100%)',   // 金色
-  'linear-gradient(135deg, #6366F1 0%, #818CF8 100%)',   // 靛蓝
-  'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',   // 粉色
-  'linear-gradient(135deg, #14B8A6 0%, #2DD4BF 100%)',   // 青色
-  'linear-gradient(135deg, #F97316 0%, #FB923C 100%)',   // 橙色
-  'linear-gradient(135deg, #8B5CF6 0%, #A78BFA 100%)',   // 紫罗兰
-  'linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%)',   // 天蓝
-]
-// 按 eventId % 8 自动分配
-```
+1. **Prometheus 性能监控**：所有微服务自动通过 `/metrics` 端点暴露 Go 运行时监控（Goroutines, GC）及业务级监控（HTTP QPS, 接口响应延迟 Histogram, Kafka 消费延迟）。
+2. **Grafana 数据大盘**：内置 Grafana Dashboard 配置，运维人员可直观查看整个分布式矩阵的健康度、流量尖刺与饱和度。
+3. **OpenTelemetry 分布式追踪**：请求经过 API 网关时被注入 TraceID，随着 HTTP 头与 Kafka Header 在微服务间流转。最终汇聚到 **Jaeger** 控制台，帮助开发人员瞬间锁定产生慢调用的微服务环节。
 
 ---
 
-## 八、API 接口文档
+## 八、云原生部署指南 (K8s)
 
-### 8.1 公开接口
+项目包含完善的 Kubernetes 资源定义文件（位于 `k8s/` 目录），适合直接在 Minikube 或生产级 K8s 集群中部署。
 
-| 方法   | 路径          | 说明   | 限流        |
-| ---- | ----------- | ---- | --------- |
-| GET  | `/health`   | 健康检查 | 无         |
-| POST | `/register` | 用户注册 | IP 100次/分 |
-| POST | `/login`    | 用户登录 | IP 100次/分 |
+### 8.1 环境依赖
 
-### 8.2 用户接口 (`/api`)
+- Kubernetes 集群 (v1.22+)
+- 预先配置好的持久化卷与外围组件 (PostgreSQL, Redis, Kafka)，或使用 Helm 快速拉起。
 
-| 方法                   | 路径                                 | 说明         |
-| -------------------- | ---------------------------------- | ---------- |
-| GET                  | `/api/profile`                     | 获取个人信息     |
-| **活动**               |                                    |            |
-| GET                  | `/api/events`                      | 活动列表 (分页)  |
-| GET                  | `/api/events/:id`                  | 活动详情       |
-| GET                  | `/api/events/:id/stock`            | 实时库存       |
-| GET                  | `/api/events/:id/shows`            | 活动场次列表     |
-| GET                  | `/api/shows/:id`                   | 场次详情       |
-| **排队**               |                                    |            |
-| POST                 | `/api/queue/:event_id/join`        | 加入排队       |
-| GET                  | `/api/queue/:event_id/position`    | 排队位置       |
-| POST                 | `/api/queue/:event_id/leave`       | 离开队列       |
-| **等候名单**             |                                    |            |
-| POST                 | `/api/waitlist/:event_id/join`     | 加入等候       |
-| GET                  | `/api/waitlist/:event_id/position` | 等候位置       |
-| POST                 | `/api/waitlist/:event_id/leave`    | 离开等候       |
-| **促销码**              |                                    |            |
-| POST                 | `/api/promo/validate`              | 验证促销码      |
-| GET                  | `/api/promo/:event_id`             | 活动促销码      |
-| **票务** (秒杀限流: 10次/秒) |                                    |            |
-| POST                 | `/api/tickets/purchase`            | 购票 (秒杀)    |
-| GET                  | `/api/tickets`                     | 我的票务       |
-| GET                  | `/api/tickets/:id`                 | 票务详情       |
-| POST                 | `/api/tickets/:id/pay`             | 支付         |
-| POST                 | `/api/tickets/:id/cancel`          | 取消         |
-| POST                 | `/api/tickets/:id/use`             | 使用         |
-| **转让**               |                                    |            |
-| POST                 | `/api/transfer`                    | 申请转让 (需审核) |
-| POST                 | `/api/transfer/gift`               | 直接转赠       |
-| GET                  | `/api/transfer/history`            | 转让记录       |
-| **二手市场**             |                                    |            |
-| GET                  | `/api/marketplace`                 | 在售列表       |
-| GET                  | `/api/marketplace/my`              | 我的上架       |
-| GET                  | `/api/marketplace/purchases`       | 我的购买       |
-| GET                  | `/api/marketplace/event/:id`       | 按活动查看      |
-| GET                  | `/api/marketplace/:id`             | 商品详情       |
-| POST                 | `/api/marketplace`                 | 上架         |
-| POST                 | `/api/marketplace/:id/buy`         | 购买         |
-| POST                 | `/api/marketplace/:id/cancel`      | 下架         |
-
-### 8.3 管理员接口 (`/admin`)
-
-| 方法       | 路径                                  | 说明    |
-| -------- | ----------------------------------- | ----- |
-| **活动管理** |                                     |       |
-| POST     | `/admin/events`                     | 创建活动  |
-| PUT      | `/admin/events/:id`                 | 更新活动  |
-| POST     | `/admin/events/:id/publish`         | 发布    |
-| POST     | `/admin/events/:id/unpublish`       | 下架    |
-| POST     | `/admin/events/:id/end`             | 结束    |
-| POST     | `/admin/events/:id/ticket-types`    | 创建票种  |
-| PUT      | `/admin/events/ticket-types/:id`    | 更新票种  |
-| DELETE   | `/admin/events/ticket-types/:id`    | 删除票种  |
-| **场次管理** |                                     |       |
-| POST     | `/admin/events/:id/shows`           | 创建场次  |
-| PUT      | `/admin/events/shows/:id`           | 更新场次  |
-| DELETE   | `/admin/events/shows/:id`           | 删除场次  |
-| POST     | `/admin/events/shows/:id/publish`   | 上架场次  |
-| POST     | `/admin/events/shows/:id/unpublish` | 下架场次  |
-| **促销码**  |                                     |       |
-| POST     | `/admin/promo`                      | 创建促销码 |
-| DELETE   | `/admin/promo/:id`                  | 删除促销码 |
-| **统计**   |                                     |       |
-| GET      | `/admin/stats/dashboard`            | 仪表盘数据 |
-| GET      | `/admin/stats/sales-trend`          | 销售趋势  |
-| GET      | `/admin/stats/ticket-types`         | 票种统计  |
-| GET      | `/admin/stats/funnel/:event_id`     | 转化漏斗  |
-| **转让审核** |                                     |       |
-| GET      | `/admin/transfer/pending`           | 待审核列表 |
-| POST     | `/admin/transfer/:id/approve`       | 批准    |
-| POST     | `/admin/transfer/:id/reject`        | 拒绝    |
-
-### 8.4 WebSocket
-
-```
-ws://localhost:8080/ws?token=<JWT>&room_id=<可选>
-```
-
-消息格式：
-
-```json
-{
-  "type": "ticket_result",
-  "payload": {
-    "ticket_id": 1,
-    "user_id": 1,
-    "status": "success",
-    "message": "购票成功！",
-    "order_no": "TK20260513120000",
-    "ticket_type": "VIP",
-    "timestamp": 1778668646
-  }
-}
-```
-
----
-
-## 九、核心业务流程
-
-### 9.1 秒杀抢票流程
-
-```
-1. 用户点击"抢购"
-2. SeckillRateLimitMiddleware 检查用户请求频率 (10次/秒)
-3. TicketService.PurchaseTicket:
-   a. 验证活动状态 == on_sale
-   b. 验证票种属于该活动
-   c. 验证未超出每用户限购
-   d. Redis Lua 脚本原子操作:
-      - 检查库存 > 0
-      - 检查未重复购买
-      - HINCRBY 扣减库存
-      - SADD 记录已购买用户
-   e. 发布消息到 Redis Stream "ticket:orders"
-4. TicketConsumer 异步消费:
-   a. 查询票种信息
-   b. AtomicDeductStock 原子扣减 DB 库存
-   c. 创建 Ticket 记录 (status: reserved)
-   d. WebSocket 推送结果给用户
-5. 用户收到通知，跳转到"我的票务"
-6. 30 分钟内未支付，票务自动过期，库存回滚
-```
-
-### 9.2 票务转让流程
-
-#### 直接转赠 (gift)
-
-```
-1. 用户选择票务，输入目标用户 ID
-2. 调用 POST /api/transfer/gift
-3. 验证:
-   - 票务存在且属于当前用户
-   - 票务状态 == paid
-   - 目标用户存在
-   - 不能转赠给自己
-4. 直接更新 Ticket.UserID = 目标用户
-5. 创建 TicketTransfer 记录 (status: approved, type: gift)
-6. 完成
-```
-
-#### 申请转让 (review)
-
-```
-1. 用户选择票务，输入目标用户 ID 和原因
-2. 调用 POST /api/transfer
-3. 创建 TicketTransfer 记录 (status: pending, type: review)
-4. 管理员在 /admin/transfer/pending 查看待审核列表
-5. 管理员 approve/reject
-6. 批准后更新 Ticket.UserID
-```
-
-### 9.3 二手市场流程
-
-```
-1. 卖家选择已支付的票务，设置价格，点击"上架"
-2. 调用 POST /api/marketplace
-3. 验证:
-   - 票务属于当前用户且已支付
-   - 价格 > 0
-   - 该票务未在市场中
-4. 创建 MarketplaceListing (status: active)
-5. 买家在二手市场浏览，点击"购买"
-6. 调用 POST /api/marketplace/:id/buy
-7. Ticket.UpdateOwner 原子更新所有权
-8. MarketplaceListing.Status = "sold"
-```
-
-### 9.4 票务过期处理
-
-```
-1. StartTicketExpireChecker 每分钟执行
-2. 查询: status = "reserved" AND created_at < now - 30min
-3. 分页循环处理所有过期票务:
-   a. 更新 Ticket.Status = "expired"
-   b. 回滚 TicketType.Stock
-   c. 回滚 Redis 秒杀库存 (SeckillRollback)
-4. WebSocket 通知用户 (如有连接)
-```
-
----
-
-## 十、安全机制
-
-### 10.1 认证授权
-
-- **JWT HS256**：Token 有效期 24 小时
-- **Redis 黑名单**：登出时 Token 加入黑名单
-- **角色鉴权**：admin 角色才能访问 `/admin/*` 接口
-- **WebSocket 认证**：连接时验证 JWT，检查黑名单
-
-### 10.2 密码安全
-
-- **bcrypt** 哈希加密，salt rounds = 默认
-- 注册要求：用户名 3-32 位，密码 8-72 位，邮箱格式验证
-
-### 10.3 限流防护
-
-| 限流类型  | 策略        | 实现                           |
-| ----- | --------- | ---------------------------- |
-| IP 限流 | 100 次/分钟  | Redis INCR + EXPIRE (Lua 原子) |
-| 秒杀限流  | 10 次/秒/用户 | Redis Lua 脚本                 |
-| 库存感知  | 库存为 0 时拒绝 | Redis Hash 查询                |
-
-### 10.4 CORS 配置
-
-```go
-cors.New(cors.Config{
-    AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"},
-    AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-    AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-    AllowCredentials: true,
-    MaxAge:           12 * time.Hour,
-})
-```
-
-### 10.5 防黄牛机制
-
-- 每用户每票种限购 (MaxPerUser)
-- Redis SET 记录已购买用户，防止重复购买
-- 秒杀限流防止脚本刷单
-- 实名制字段 (RealName, IDCard, Phone)
-
----
-
-## 十一、性能优化
-
-### 11.1 Redis 优化
-
-- **Lua 脚本原子操作**：秒杀扣减、限流计数
-- **Pipeline 批量操作**：减少网络往返
-- **16 分片 WebSocket Hub**：分散锁竞争
-- **复合索引**：避免全表扫描
-
-### 11.2 N+1 查询修复
-
-批量加载替代逐条查询：
-
-```go
-// 修复前：每条记录 2 次查询，20 条 = 40 次查询
-for _, listing := range listings {
-    ticket, _ := ticketRepo.FindByID(listing.TicketID)
-    tt, _ := ticketTypeRepo.FindByID(ticket.TicketTypeID)
-}
-
-// 修复后：2 次批量查询
-ticketIDs := collectUniqueIDs(listings)
-tickets, _ := ticketRepo.FindByIDs(ticketIDs)
-ttIDs := collectUniqueIDs(tickets)
-ticketTypes, _ := ticketTypeRepo.FindByIDs(ttIDs)
-```
-
-### 11.3 原子库存扣减
-
-```go
-// 修复前：检查+更新非原子，可能超卖
-if ticketType.Stock >= quantity {
-    ticketTypeRepo.UpdateStock(id, -quantity)
-}
-
-// 修复后：WHERE stock >= qty 保证原子性
-func AtomicDeductStock(id uint, quantity int) error {
-    result := db.Where("id = ? AND stock >= ?", id, quantity).
-        Update("stock", gorm.Expr("stock - ?", quantity))
-    if result.RowsAffected == 0 {
-        return fmt.Errorf("库存不足")
-    }
-}
-```
-
-### 11.4 后台任务优雅停机
-
-```go
-// 修复前：context.Background() 无法取消
-go ticketConsumer.Start(context.Background())
-
-// 修复后：传入可取消 context
-ctx, cancel := context.WithCancel(context.Background())
-go ticketConsumer.Start(ctx)
-// 关机时 cancel() 触发优雅退出
-```
-
----
-
-## 十二、部署方案
-
-### 12.1 Docker Compose
-
-```yaml
-services:
-  app:        # Go 后端 (端口 8080)
-  postgres:   # PostgreSQL 15 (端口 5432)
-  redis:      # Redis 7 (端口 6379)
-  jaeger:     # Jaeger UI (端口 16686)
-```
-
-### 12.2 Dockerfile (多阶段构建)
-
-```dockerfile
-# 构建阶段
-FROM golang:1.24-alpine AS builder
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 go build -o /app/order-system ./cmd/api/main.go
-
-# 运行阶段
-FROM alpine:3.19
-RUN apk add ca-certificates tzdata
-COPY --from=builder /app/order-system .
-EXPOSE 8080 9090
-ENTRYPOINT ["./order-system"]
-```
-
-### 12.3 环境变量
-
-| 变量                 | 默认值          | 说明            |
-| ------------------ | ------------ | ------------- |
-| APP_ENV            | production   | 环境            |
-| APP_PORT           | 8080         | HTTP 端口       |
-| DB_HOST            | postgres     | 数据库主机         |
-| DB_PORT            | 5432         | 数据库端口         |
-| DB_USER            | postgres     | 数据库用户         |
-| DB_PASSWORD        | (必填)         | 数据库密码         |
-| DB_NAME            | order_system | 数据库名          |
-| REDIS_HOST         | redis        | Redis 主机      |
-| REDIS_PORT         | 6379         | Redis 端口      |
-| JWT_SECRET         | (必填)         | JWT 密钥        |
-| JWT_EXPIRE         | 86400        | Token 过期时间(秒) |
-| OTEL_EXPORTER_TYPE | otlp         | 追踪导出器类型       |
-
-### 12.4 一键启动
+### 8.2 部署步骤
 
 ```bash
-# Windows
-start.bat
+# 1. 部署配置与密钥
+kubectl apply -f k8s/configmap.yaml
+kubectl apply -f k8s/secret.yaml
 
-# Docker Compose
+# 2. 部署无状态微服务集群
+kubectl apply -f k8s/admin-deployment.yaml
+kubectl apply -f k8s/order-deployment.yaml
+kubectl apply -f k8s/seckill-deployment.yaml
+kubectl apply -f k8s/ws-gateway-deployment.yaml
+
+# 3. 配置容灾保护与入口网关
+kubectl apply -f k8s/poddisruptionbudget.yaml
+kubectl apply -f k8s/ingress.yaml
+```
+
+部署完成后，Kubernetes 将自动接管微服务的重启、自动伸缩以及负载均衡服务。
+
+---
+
+## 九、本地开发与快速启动
+
+为了方便个人学习与快速体验，系统依旧保留了便捷的 Docker Compose 联合调试配置。
+
+### 环境准备
+
+- Go 1.24+
+- Node.js 18+ (用于编译 React)
+- Docker Desktop (用于拉起 DB/Redis/Kafka/Jaeger/Prometheus)
+
+### 一键启动中间件
+
+```bash
+# 在项目根目录，拉起所有依赖基础组件
 docker-compose up -d
 ```
 
----
+### 启动后端微服务集群
 
-## 十三、开发指南
-
-### 13.1 本地开发
+你需要分别启动核心服务（可以打开多个终端）：
 
 ```bash
-# 后端
-cd internal/
-go mod tidy
-go run ./cmd/api/main.go
+go run cmd/api/main.go
+go run cmd/order/main.go
+go run cmd/seckill/main.go
+go run cmd/admin/main.go
+go run cmd/ws-gateway/main.go
+```
 
-# 前端
-cd web/
+### 启动 React 前端
+
+```bash
+cd web
 npm install
 npm run dev
 ```
 
-### 13.2 CI/CD (GitHub Actions)
-
-```yaml
-jobs:
-  backend:     # go vet → go build → go test -race -cover
-  frontend:    # npm ci → tsc --noEmit → npm run build
-  docker:      # docker build
-```
-
-### 13.3 项目规范
-
-- **提交格式**: `<type>: <description>` (feat/fix/refactor/docs/test/chore)
-- **分支策略**: main/master 为稳定分支
-- **代码审查**: 所有变更需经过审查
-- **测试覆盖**: 最低 80%
+前端将默认运行在 `http://localhost:5173`。
 
 ---
 
-## 十四、功能清单
+## 十、功能清单与演进路线
 
-### 已实现功能
-
-| 阶段       | 功能                   | 状态  |
-| -------- | -------------------- | --- |
-| **基础**   | 用户注册/登录              | ✅   |
-|          | JWT 认证 + 黑名单         | ✅   |
-|          | 角色鉴权 (admin/user)    | ✅   |
-|          | 活动 CRUD              | ✅   |
-|          | 票种管理                 | ✅   |
-|          | 秒杀抢票 (Redis Lua)     | ✅   |
-|          | 异步出票 (Redis Stream)  | ✅   |
-|          | WebSocket 实时通知       | ✅   |
-|          | 票务支付/取消/使用           | ✅   |
-|          | 票务过期自动回收             | ✅   |
-| **第一阶段** | 排队系统 (Redis List)    | ✅   |
-|          | 倒计时功能                | ✅   |
-|          | 等候名单                 | ✅   |
-| **第二阶段** | 促销码系统                | ✅   |
-|          | 邮件通知模板               | ✅   |
-|          | 社交分享按钮               | ✅   |
-| **第三阶段** | 管理员数据仪表盘             | ✅   |
-|          | 实时销售统计               | ✅   |
-|          | 转化漏斗分析               | ✅   |
-|          | 防黄牛增强 (限流+限购)        | ✅   |
-|          | 票务转让审核               | ✅   |
-| **第四阶段** | 多场次管理                | ✅   |
-|          | 场次选择界面               | ✅   |
-|          | 直接转赠好友               | ✅   |
-|          | 二手交易市场               | ✅   |
-|          | 转让记录追踪               | ✅   |
-| **安全加固** | CORS 配置              | ✅   |
-|          | 输入校验增强               | ✅   |
-|          | WebSocket 黑名单检查      | ✅   |
-|          | 密钥不硬编码               | ✅   |
-| **性能优化** | N+1 查询修复             | ✅   |
-|          | 原子库存扣减               | ✅   |
-|          | 复合索引                 | ✅   |
-|          | 限流 Lua 脚本            | ✅   |
-|          | 优雅停机                 | ✅   |
-| **代码质量** | getUser 公共函数         | ✅   |
-|          | 参数校验统一               | ✅   |
-|          | 魔法数字常量化              | ✅   |
-| **前端美化** | CSS 变量体系             | ✅   |
-|          | 双模式主题系统              | ✅   |
-|          | 品牌 Logo              | ✅   |
-|          | 骨架屏加载                | ✅   |
-|          | 页面过渡动画               | ✅   |
-|          | 活动封面渐变系统             | ✅   |
-| **基础设施** | Docker 多阶段构建         | ✅   |
-|          | Docker Compose 编排    | ✅   |
-|          | GitHub Actions CI/CD | ✅   |
-|          | OpenTelemetry 追踪     | ✅   |
+| 里程碑        | 功能模块                      | 状态  |
+| ---------- | ------------------------- |:---:|
+| **基础建设**   | 用户认证 (JWT + 黑名单)          | ✅   |
+|            | 活动与场次 CRUD                | ✅   |
+|            | 票种管理与票务体系                 | ✅   |
+| **高并发秒杀**  | Redis Lua 库存扣减            | ✅   |
+|            | Kafka 分布式消息异步削峰           | ✅   |
+|            | Snowflake 分布式 ID          | ✅   |
+|            | WebSocket 高可用状态推送         | ✅   |
+| **防黄牛策略**  | 流量防刷 (IP+用户级双重限流)         | ✅   |
+|            | 排队等候大厅与退单重分配              | ✅   |
+|            | 实名与限购策略强制绑定               | ✅   |
+| **微服务化改造** | API Gateway / BFF 服务集成    | ✅   |
+|            | 多模块独立拆分与服务通信              | ✅   |
+|            | OpenTelemetry 链路追踪集成      | ✅   |
+| **基础设施**   | 接入 Kubernetes 生产级编排       | ✅   |
+|            | Prometheus + Grafana 业务看板 | ✅   |
+| **高级业务形态** | 安全合规的票务转让 (转赠/审核)         | ✅   |
+|            | 官方去中介化二手交易大厅              | ✅   |
+|            | 自动化促销码优惠抵扣引擎              | ✅   |
+| **现代化前端**  | AntD 5 全面适配与定制化主题         | ✅   |
+|            | CommandPalette 全局快捷控制台    | ✅   |
+|            | 丝滑骨架屏与暗黑模式深度切换            | ✅   |
 
 ---
-
-*文档生成时间: 2026-05-13*
-*项目版本: v1.0*
-
-> > > > > > > master

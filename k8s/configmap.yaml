@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ticket-system-config
+  namespace: ticket-system
+data:
+  APP_ENV: "production"
+  APP_PORT: "8080"
+  LOG_LEVEL: "info"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_NAME: "order_system"
+  DB_SSLMODE: "require"
+  DB_MAX_OPEN_CONNS: "50"
+  DB_MAX_IDLE_CONNS: "25"
+  DB_CONN_MAX_LIFETIME: "300"
+  DB_CONN_MAX_IDLE_TIME: "60"
+  REDIS_HOST: "redis"
+  REDIS_PORT: "6379"
+  REDIS_CLUSTER_MODE: "false"
+  KAFKA_ENABLED: "true"
+  KAFKA_BROKERS: "kafka-0.kafka:9092,kafka-1.kafka:9092,kafka-2.kafka:9092"
+  OTEL_EXPORTER_TYPE: "otlp"
+  OTEL_ENDPOINT: "jaeger:4317"
+  OTEL_SERVICE_NAME: "ticket-system"
+  WS_GATEWAY_ENABLED: "true"
+  ALLOW_ORIGINS: "https://ticket.example.com"

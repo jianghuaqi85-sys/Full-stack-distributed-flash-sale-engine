@@ -1,19 +1,45 @@
 package service
 
 import (
+	"context"
+	"encoding/json"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
 	"order-system/internal/pkg/db"
 )
 
+const (
+	dashboardCacheTTL = 30 * time.Second
+	salesTrendCacheTTL = 60 * time.Second
+	ticketTypeStatsCacheTTL = 60 * time.Second
+)
+
 type StatsService struct {
-	db *gorm.DB
+	db    *gorm.DB
+	redis *redis.Client
 }
 
 func NewStatsService(db *gorm.DB) *StatsService {
 	return &StatsService{db: db}
+}
+
+// NewStatsServiceWithRedis 创建带 Redis 缓存的统计服务
+func NewStatsServiceWithRedis(db *gorm.DB, redisClient *redis.Client) *StatsService {
+	return &StatsService{db: db, redis: redisClient}
+}
+
+// InvalidateStatsCache 主动失效统计缓存（活动发布/票务状态变更时调用）
+func (s *StatsService) InvalidateStatsCache() {
+	if s.redis == nil {
+		return
+	}
+	ctx := context.Background()
+	s.redis.Del(ctx, "stats:dashboard")
+	s.redis.Del(ctx, "stats:ticket_types")
+	// Sales trend 按日期 key，不需要精确删除
 }
 
 type DashboardStats struct {
@@ -50,6 +76,19 @@ type ConversionFunnel struct {
 }
 
 func (s *StatsService) GetDashboardStats() (*DashboardStats, error) {
+	ctx := context.Background()
+
+	// 尝试从缓存读取
+	if s.redis != nil {
+		cached, err := s.redis.Get(ctx, "stats:dashboard").Result()
+		if err == nil && cached != "" {
+			var stats DashboardStats
+			if json.Unmarshal([]byte(cached), &stats) == nil {
+				return &stats, nil
+			}
+		}
+	}
+
 	stats := &DashboardStats{}
 
 	// 活动统计
@@ -69,39 +108,98 @@ func (s *StatsService) GetDashboardStats() (*DashboardStats, error) {
 	s.db.Model(&db.Ticket{}).Where("DATE(created_at) = ? AND status = ?", today, "paid").Count(&stats.TodaySales)
 	s.db.Model(&db.Ticket{}).Where("DATE(created_at) = ? AND status = ?", today, "paid").Select("COALESCE(SUM(total_price), 0)").Scan(&stats.TodayRevenue)
 
+	// 写入缓存
+	if s.redis != nil {
+		if data, err := json.Marshal(stats); err == nil {
+			s.redis.Set(ctx, "stats:dashboard", string(data), dashboardCacheTTL)
+		}
+	}
+
 	return stats, nil
 }
 
 func (s *StatsService) GetSalesTrend(days int) ([]SalesTrend, error) {
+	ctx := context.Background()
+	cacheKey := "stats:sales_trend:" + time.Now().Format("2006-01-02")
+
+	// 尝试从缓存读取
+	if s.redis != nil {
+		cached, err := s.redis.Get(ctx, cacheKey).Result()
+		if err == nil && cached != "" {
+			var trends []SalesTrend
+			if json.Unmarshal([]byte(cached), &trends) == nil {
+				return trends, nil
+			}
+		}
+	}
+
 	var trends []SalesTrend
+
+	startDate := time.Now().AddDate(0, 0, -(days-1)).Format("2006-01-02")
+
+	type dailyStat struct {
+		Date    string
+		Count   int64
+		Revenue float64
+	}
+	var stats []dailyStat
+
+	s.db.Model(&db.Ticket{}).
+		Select("DATE(created_at) as date, COUNT(*) as count, COALESCE(SUM(total_price), 0) as revenue").
+		Where("DATE(created_at) >= ? AND status = ?", startDate, "paid").
+		Group("DATE(created_at)").
+		Order("DATE(created_at) ASC").
+		Scan(&stats)
+
+	// 构建完整日期序列，补零
+	statMap := make(map[string]dailyStat)
+	for _, s := range stats {
+		statMap[s.Date] = s
+	}
 
 	for i := days - 1; i >= 0; i-- {
 		date := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		if st, ok := statMap[date]; ok {
+			trends = append(trends, SalesTrend{
+				Date:    st.Date,
+				Count:   st.Count,
+				Revenue: st.Revenue,
+			})
+		} else {
+			trends = append(trends, SalesTrend{
+				Date:    date,
+				Count:   0,
+				Revenue: 0,
+			})
+		}
+	}
 
-		var count int64
-		var revenue float64
-
-		s.db.Model(&db.Ticket{}).
-			Where("DATE(created_at) = ? AND status = ?", date, "paid").
-			Count(&count)
-
-		s.db.Model(&db.Ticket{}).
-			Where("DATE(created_at) = ? AND status = ?", date, "paid").
-			Select("COALESCE(SUM(total_price), 0)").
-			Scan(&revenue)
-
-		trends = append(trends, SalesTrend{
-			Date:    date,
-			Count:   count,
-			Revenue: revenue,
-		})
+	// 写入缓存
+	if s.redis != nil {
+		if data, err := json.Marshal(trends); err == nil {
+			s.redis.Set(ctx, cacheKey, string(data), salesTrendCacheTTL)
+		}
 	}
 
 	return trends, nil
 }
 
 func (s *StatsService) GetTicketTypeStats() ([]TicketTypeStats, error) {
-	var stats []TicketTypeStats
+	ctx := context.Background()
+	cacheKey := "stats:ticket_types"
+
+	// 尝试从缓存读取
+	if s.redis != nil {
+		cached, err := s.redis.Get(ctx, cacheKey).Result()
+		if err == nil && cached != "" {
+			var stats []TicketTypeStats
+			if json.Unmarshal([]byte(cached), &stats) == nil {
+				return stats, nil
+			}
+		}
+	}
+
+	stats := make([]TicketTypeStats, 0)
 
 	s.db.Model(&db.Ticket{}).
 		Select(`
@@ -118,26 +216,33 @@ func (s *StatsService) GetTicketTypeStats() ([]TicketTypeStats, error) {
 		Order("sold_count DESC").
 		Scan(&stats)
 
+	// 写入缓存
+	if s.redis != nil {
+		if data, err := json.Marshal(stats); err == nil {
+			s.redis.Set(ctx, cacheKey, string(data), ticketTypeStatsCacheTTL)
+		}
+	}
+
 	return stats, nil
 }
 
 func (s *StatsService) GetConversionFunnel(eventID uint) (*ConversionFunnel, error) {
 	funnel := &ConversionFunnel{}
 
-	// 页面浏览数（简化：使用活动浏览记录，这里用票务查询代替）
+	// 总票务数（所有状态，代表下单意向）
 	s.db.Model(&db.Ticket{}).Where("event_id = ?", eventID).Count(&funnel.PageViews)
 
-	// 加入购物车（排队/等候名单）
+	// 已预定（reserved 状态，代表已下单未支付）
 	s.db.Model(&db.Ticket{}).Where("event_id = ? AND status = ?", eventID, "reserved").Count(&funnel.AddToCart)
 
-	// 预定
-	s.db.Model(&db.Ticket{}).Where("event_id = ? AND status = ?", eventID, "reserved").Count(&funnel.Reserved)
+	// 已支付（paid 状态）
+	s.db.Model(&db.Ticket{}).Where("event_id = ? AND status = ?", eventID, "paid").Count(&funnel.Reserved)
 
-	// 支付
-	s.db.Model(&db.Ticket{}).Where("event_id = ? AND status = ?", eventID, "paid").Count(&funnel.Paid)
+	// 已使用（used 状态）
+	s.db.Model(&db.Ticket{}).Where("event_id = ? AND status = ?", eventID, "used").Count(&funnel.Paid)
 
-	// 使用
-	s.db.Model(&db.Ticket{}).Where("event_id = ? AND status = ?", eventID, "used").Count(&funnel.Used)
+	// 已取消/过期
+	s.db.Model(&db.Ticket{}).Where("event_id = ? AND status IN ?", eventID, []string{"cancelled", "expired"}).Count(&funnel.Used)
 
 	return funnel, nil
 }
